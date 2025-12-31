@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <style>
+        body { margin:0; font-family: sans-serif; min-height:100vh; position:relative; }
+        .screen { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:24px; background:transparent; opacity:0; pointer-events:none; transition:opacity 300ms ease; }
+        .screen.active { opacity:1; pointer-events:auto; }
+        /* Username screen larger */
+        #usernamePage { gap:12px; display:flex; align-items:center; justify-content:center; }
+        #usernamePage h2 { font-size:32px; margin:0; }
+        #usernamePage input { font-size:18px; padding:8px 12px; width:360px; }
+
+        /* Lobby centered and larger controls */
+        #lobbyScreen { gap:12px; justify-content:center; align-items:center; }
+        #lobbyScreen .lobbyControls { display:flex; gap:12px; align-items:center; font-size:18px; }
+        #lobbyScreen .lobbyControls button, #lobbyScreen .lobbyControls input { font-size:16px; padding:8px 10px; }
+
+        #gameScreen { gap:12px; }
+    </style>
+
+    <div id="usernamePage" class="screen active">
+        <h2>Set Username</h2>
+        <input type="text" id="txtUsername" placeholder="Enter username">
+        <button id="btnSet">Set Username</button>
+    </div>
+
+    <div id="lobbyScreen" class="screen" style="display:flex;">
+        <div class="lobbyControls">
+            <button id="btnCreate">New Game</button>
+            <button id="btnJoin">Join Game</button>
+            <input type="text" id="txtGameId" placeholder="Game ID">
+        </div>
+        <div id="divPlayers" style="margin-top:18px; width:100%; max-width:640px;"></div>
+    </div>
+
+    <div id="gameScreen" class="screen">
+        <div id="divBoard" style="width:100%; max-width:900px; min-height:240px;"></div>
+    </div>
+
+    <script>
+        //HTML elements
+        let clientId = null;
+        let gameId = null;
+        let playerColor = null;
+        let username = null;
+        let pot = 0;
+        let ws = new WebSocket("ws://localhost:9090")
+        const btnCreate = document.getElementById("btnCreate");
+        const btnJoin = document.getElementById("btnJoin");
+        const txtGameId = document.getElementById("txtGameId");
+        const divPlayers = document.getElementById("divPlayers");
+        const divBoard = document.getElementById("divBoard");
+        let messagesContainer = null; // created only when player is in the game
+        const txtUsername = document.getElementById("txtUsername");
+        const btnSet = document.getElementById("btnSet");
+        const usernamePage = document.getElementById("usernamePage");
+        let amountAdded = 0;
+        let prevRound = null;
+        
+        // screen switching helper (username, lobby, game)
+        function showScreen(id){
+            const screens = document.querySelectorAll('.screen');
+            screens.forEach(s => s.classList.remove('active'));
+            const target = document.getElementById(id);
+            if (target) {
+                target.classList.add('active');
+                // minor focus management
+                const input = target.querySelector('input');
+                if (input) input.focus();
+            }
+        }
+    
+        //wiring events
+        btnJoin.addEventListener("click", e => {
+
+            if (gameId === null)
+                gameId = txtGameId.value;
+            
+            const payLoad = {
+                "method": "join",
+                "clientId": clientId,
+                "gameId": gameId,
+                "name": username
+            }
+
+            ws.send(JSON.stringify(payLoad));
+
+        })
+        btnSet.addEventListener("click", e => {
+            const val = txtUsername.value && txtUsername.value.trim();
+            if (!val) {
+                showError("Please enter a username");
+                return;
+            }
+            username = val;
+            showScreen('lobbyScreen');
+        })
+        btnCreate.addEventListener("click", e => {
+
+            const payLoad = {
+                "method": "create",
+                "clientId": clientId
+            }
+
+            ws.send(JSON.stringify(payLoad));
+
+        })
+
+        ws.onmessage = message => {
+            //message.data
+            const response = JSON.parse(message.data);
+            //connect
+            if (response.method === "connect"){
+                clientId = response.clientId;
+                console.log("Client id Set successfully " + clientId)
+            }
+            
+
+            //create
+            if (response.method === "create"){
+                gameId = response.game.id;
+                console.log("game successfully created with id " + response.game.id + " with " + response.game.balls + " balls")  
+                const payLoad = {
+                "method": "join",
+                "clientId": clientId,
+                "gameId": response.game.id,
+                "name": username
+                }
+                ws.send(JSON.stringify(payLoad));
+            }
+            //error
+            if (response.method === "error"){
+                showError(response.error);
+                console.log(response.amountadded)
+                return;
+            }
+
+
+            //update: expect a single numeric value for the game
+            if (response.method === "update"){
+                const game = response.game || {};
+                let value = null;
+                if (typeof game.value === 'number') value = game.value;
+                else if (typeof game.state === 'number') value = game.state;
+                else if (game.state && typeof game.state.value === 'number') value = game.state.value;
+                const display = document.getElementById('numberDisplay');
+                if (value !== null && value !== undefined && display) display.textContent = String(value);
+                console.log(game.max)
+                // update round and turn if present
+                const roundDisplay = document.getElementById('roundDisplay');
+                const turnDisplay = document.getElementById('turnDisplay');
+                if (roundDisplay) roundDisplay.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
+                if (turnDisplay) turnDisplay.textContent = 'Turn: ' + (game.currentTurnName || '');
+
+                // reset local per-round added counters if round changed
+                if (typeof game.round === 'number' && prevRound !== game.round){
+                    amountAdded = 0;
+                    const yourAddedDisplay = document.getElementById('yourAddedDisplay');
+                    if (yourAddedDisplay) yourAddedDisplay.textContent = 'You added: 0';
+                    const addInput = document.getElementById('addInput');
+                    if (addInput) addInput.value = '';
+                    prevRound = game.round;
+                }
+
+                // display target (game.max) and per-client added amounts
+                const target = typeof game.max === 'number' ? game.max : 0;
+                const maxDisplay = document.getElementById('maxDisplay');
+                if (maxDisplay) maxDisplay.textContent = 'Target: ' + target;
+
+                const requiredAddDisplay = document.getElementById('requiredAddDisplay');
+                const yourAddedDisplay = document.getElementById('yourAddedDisplay');
+                const yourChipsValue = document.getElementById('yourChipsValue');
+                const myAdded = (game.amountsAdded && typeof game.amountsAdded[clientId] === 'number') ? game.amountsAdded[clientId] : 0;
+                const required = Math.max(0, target - myAdded);
+                if (requiredAddDisplay) requiredAddDisplay.textContent = 'To add: ' + required;
+                if (yourAddedDisplay) yourAddedDisplay.textContent = 'You added: ' + myAdded;
+                const myChips = (game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0;
+                if (yourChipsValue) yourChipsValue.textContent = String(myChips);
+
+                // create/show messages only if this client is in the game
+                const amIInGame = Array.isArray(game.clients) && game.clients.some(c => c.clientId === clientId);
+                if (amIInGame) {
+                    ensureMessagesContainer();
+                    if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    // community area
+                    ensureCommunityContainer();
+                    if (Array.isArray(game.community)) renderCommunity(game.community, game.round);
+                    // show chips widget
+                    ensureYourChipsContainer();
+                    const vElm = document.getElementById('yourChipsValue');
+                    if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
+                    // show blind notice on start if applicable
+                    const sbIndexStart = typeof game.smallBlindIndex === 'number' ? game.smallBlindIndex : null;
+                    const bbIndexStart = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
+                    const sbIdStart = (Array.isArray(game.clients) && sbIndexStart !== null && game.clients[sbIndexStart]) ? game.clients[sbIndexStart].clientId : null;
+                    const bbIdStart = (Array.isArray(game.clients) && bbIndexStart !== null && game.clients[bbIndexStart]) ? game.clients[bbIndexStart].clientId : null;
+                    if (clientId === bbIdStart) { showBlindNotice('You are the Big Blind'); }
+                    else if (clientId === sbIdStart) { showBlindNotice('You are the Small Blind'); }
+                    else { clearBlindNotice(); }
+                    // show blind notice if this client is small or big blind
+                    const sbIndex = typeof game.smallBlindIndex === 'number' ? game.smallBlindIndex : null;
+                    const bbIndex = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
+                    const sbId = (Array.isArray(game.clients) && sbIndex !== null && game.clients[sbIndex]) ? game.clients[sbIndex].clientId : null;
+                    const bbId = (Array.isArray(game.clients) && bbIndex !== null && game.clients[bbIndex]) ? game.clients[bbIndex].clientId : null;
+                    if (clientId === bbId) {
+                        showBlindNotice('You are the Big Blind');
+                    } else if (clientId === sbId) {
+                        showBlindNotice('You are the Small Blind');
+                    } else {
+                        clearBlindNotice();
+                    }
+                } else {
+                    removeMessagesContainer();
+                    removeCommunityContainer();
+                    removeYourChipsContainer();
+                }
+
+                // enable/disable inputs based on turn and gray them out
+                const addInput = document.getElementById('addInput');
+                const addBtn = document.getElementById('addBtn');
+                const isMyTurn = (() => {
+                    if (!game.started || game.ended) return false;
+                    const ti = typeof game.turnIndex === 'number' ? game.turnIndex : 0;
+                    const current = (game.clients || [])[ti];
+                    return current && current.clientId === clientId;
+                })();
+                if (addInput) {
+                    addInput.disabled = !isMyTurn;
+                    addInput.min = Math.max(1, required);
+                    addInput.style.background = addInput.disabled ? '#eee' : '';
+                }
+                if (addBtn) {
+                    addBtn.disabled = !isMyTurn;
+                    addBtn.style.background = addBtn.disabled ? '#eee' : '';
+                }
+            }
+
+            //start: server signals that the game has started; render numeric UI
+            if (response.method === "start"){
+                const game = response.game || {};
+                // clear board and controls overlay
+                while(divBoard.firstChild) divBoard.removeChild(divBoard.firstChild);
+                removeControlsOverlay();
+
+                // ensure board positioning for centered pot
+                divBoard.style.position = 'center';
+                divBoard.style.minHeight = '360px';
+
+                const numberContainer = document.createElement('div');
+                numberContainer.style.position = 'absolute';
+                numberContainer.style.top = '30%';
+                numberContainer.style.left = '50%';
+                numberContainer.style.transform = 'translate(-50%, -50%)';
+                numberContainer.style.display = 'flex';
+                numberContainer.style.flexDirection = 'column';
+                numberContainer.style.alignItems = 'center';
+                numberContainer.style.gap = '10px';
+                const headerRow = document.createElement('div');
+                headerRow.style.display = 'flex';
+                headerRow.style.gap = '10px';
+
+                const roundDisplay = document.createElement('div');
+                roundDisplay.id = 'roundDisplay';
+                roundDisplay.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
+                headerRow.appendChild(roundDisplay);
+
+                const turnDisplay = document.createElement('div');
+                turnDisplay.id = 'turnDisplay';
+                turnDisplay.textContent = 'Turn: ' + (game.currentTurnName || '');
+                headerRow.appendChild(turnDisplay);
+
+                const requiredAddDisplay = document.createElement('div');
+                requiredAddDisplay.id = 'requiredAddDisplay';
+                requiredAddDisplay.textContent = 'To add: 0';
+                headerRow.appendChild(requiredAddDisplay);
+
+                const yourAddedDisplay = document.createElement('div');
+                yourAddedDisplay.id = 'yourAddedDisplay';
+                yourAddedDisplay.textContent = 'You added: 0';
+                headerRow.appendChild(yourAddedDisplay);
+
+                // chips widget moved to bottom-left; created via ensureYourChipsContainer()
+
+                numberContainer.appendChild(headerRow);
+
+                const display = document.createElement('div');
+                display.id = 'numberDisplay';
+                display.textContent = String(game.value != null ? game.value : (game.state && game.state.value != null ? game.state.value : 0));
+                display.style.fontSize = '48px';
+                display.style.width = '200px';
+                display.style.textAlign = 'center';
+                display.style.border = '1px solid #ccc';
+                display.style.padding = '20px';
+                numberContainer.appendChild(display);
+
+                // create controls overlay (bottom-center) and attach inputs there
+                removeControlsOverlay();
+                const controlsOverlay = document.createElement('div');
+                controlsOverlay.id = 'controlsOverlay';
+                controlsOverlay.style.position = 'fixed';
+                controlsOverlay.style.bottom = '20px';
+                controlsOverlay.style.left = '50%';
+                controlsOverlay.style.transform = 'translateX(-50%)';
+                controlsOverlay.style.display = 'flex';
+                controlsOverlay.style.gap = '8px';
+                controlsOverlay.style.alignItems = 'center';
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.id = 'addInput';
+                input.placeholder = 'Value to add';
+                input.style.width = '120px';
+                input.step = '1';
+                input.min = '1';
+
+                const addBtn = document.createElement('button');
+                addBtn.id = 'addBtn';
+                addBtn.textContent = 'Add';
+                    addBtn.addEventListener('click', () => {
+                        const v = Number(input.value);
+                        if (Number.isNaN(v) || !Number.isInteger(v) || v <= 0) { showError('Enter a whole number greater than 0'); return; }
+                    const payLoad = {
+                        method: 'add',
+                        clientId: clientId,
+                        gameId: response.gameId || gameId,
+                        value: v,
+                        name: username
+                    };
+                    amountAdded = (amountAdded || 0) + v;
+                    ws.send(JSON.stringify(payLoad));
+                });
+
+                const checkBtn = document.createElement('button');
+                checkBtn.id = 'checkBtn';
+                checkBtn.textContent = 'Check';
+                checkBtn.addEventListener('click', () => {
+                    const payLoad = {
+                        method: 'add',
+                        clientId: clientId,
+                        gameId: response.gameId || gameId,
+                        value: 0,
+                        name: username
+                    };
+                    ws.send(JSON.stringify(payLoad));
+                });
+
+                const foldBtn = document.createElement('button');
+                foldBtn.id = 'foldBtn';
+                foldBtn.textContent = 'Fold';
+                foldBtn.addEventListener('click', () => {
+                    const payLoad = { method: 'fold', clientId: clientId, gameId: response.gameId || gameId };
+                    ws.send(JSON.stringify(payLoad));
+                });
+
+                controlsOverlay.appendChild(input);
+                controlsOverlay.appendChild(addBtn);
+                controlsOverlay.appendChild(checkBtn);
+                controlsOverlay.appendChild(foldBtn);
+                document.body.appendChild(controlsOverlay);
+                // create cards area above controls (your cards) with label
+                removeCardsOverlay();
+                const cardsOverlay = document.createElement('div');
+                cardsOverlay.id = 'cardsOverlay';
+                cardsOverlay.style.position = 'fixed';
+                cardsOverlay.style.bottom = '80px';
+                cardsOverlay.style.left = '50%';
+                cardsOverlay.style.transform = 'translateX(-50%)';
+                cardsOverlay.style.display = 'flex';
+                cardsOverlay.style.flexDirection = 'column';
+                cardsOverlay.style.gap = '8px';
+                cardsOverlay.style.alignItems = 'center';
+                cardsOverlay.style.zIndex = '1100';
+                // label
+                const yourLabel = document.createElement('div');
+                yourLabel.textContent = 'Your cards';
+                yourLabel.style.fontWeight = '600';
+                yourLabel.style.marginBottom = '4px';
+                cardsOverlay.appendChild(yourLabel);
+                const cardsRow = document.createElement('div');
+                cardsRow.style.display = 'flex';
+                cardsRow.style.gap = '8px';
+                cardsRow.id = 'cardsRow';
+                cardsOverlay.appendChild(cardsRow);
+                document.body.appendChild(cardsOverlay);
+
+                if (Array.isArray(response.privateHand)) {
+                    renderCards(response.privateHand);
+                }
+                // render community if present
+                if (Array.isArray(game.community)){
+                    ensureCommunityContainer();
+                    renderCommunity(game.community, game.round);
+                } else {
+                    removeCommunityContainer();
+                }
+
+                divBoard.appendChild(numberContainer);
+                // messages only for players in game (start always shows messages to players who joined)
+                const amIInGameStart = Array.isArray(game.clients) && game.clients.some(c=>c.clientId===clientId);
+                if (amIInGameStart) {
+                    ensureMessagesContainer();
+                    if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    // reset local per-round counters on start as well
+                    ensureYourChipsContainer();
+                    const sbIndexJoin = typeof game.smallBlindIndex === 'number' ? game.smallBlindIndex : null;
+                    const bbIndexJoin = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
+                    const sbIdJoin = (Array.isArray(game.clients) && sbIndexJoin !== null && game.clients[sbIndexJoin]) ? game.clients[sbIndexJoin].clientId : null;
+                    const bbIdJoin = (Array.isArray(game.clients) && bbIndexJoin !== null && game.clients[bbIndexJoin]) ? game.clients[bbIndexJoin].clientId : null;
+                    if (clientId === bbIdJoin) { showBlindNotice('You are the Big Blind'); }
+                    else if (clientId === sbIdJoin) { showBlindNotice('You are the Small Blind'); }
+                    else { clearBlindNotice(); }
+                    const vElm = document.getElementById('yourChipsValue');
+                    if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
+                    amountAdded = 0;
+                    prevRound = game.round;
+                } else {
+                    removeMessagesContainer();
+                    removeYourChipsContainer();
+                }
+            }
+
+            //join
+            if (response.method === "join"){
+                const game = response.game;
+                // switch to in-game screen when we receive a join payload
+                showScreen('gameScreen');
+                gameId = response.gameId || (game && game.id) || gameId;
+
+                while(divPlayers.firstChild)
+                    divPlayers.removeChild(divPlayers.firstChild)
+                const di = document.createElement("div");
+                    di.style.width = "200px";
+                    di.style.background = "White";
+                    di.textContent = "current game code: " + (response.gameId || (game && game.id));
+                    divPlayers.appendChild(di);
+                // show chat once players have joined (even before the game starts)
+                const amIInGameNow = Array.isArray(game.clients) && game.clients.some(c => c.clientId === clientId);
+                if (amIInGameNow) {
+                    ensureMessagesContainer();
+                    if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    ensureCommunityContainer();
+                    if (Array.isArray(game.community)) renderCommunity(game.community, game.round);
+                    ensureYourChipsContainer();
+                } else {
+                    removeMessagesContainer();
+                    removeCommunityContainer();
+                    removeYourChipsContainer();
+                }
+                while(divBoard.firstChild)
+                    divBoard.removeChild (divBoard.firstChild)
+                removeControlsOverlay();
+
+                // If the game hasn't started yet, show start button to creator, else show waiting text
+                if (!game.started) {
+                    if (game.creator === clientId) {
+                        const startBtn = document.createElement('button');
+                        startBtn.textContent = 'Start Game';
+                        startBtn.addEventListener('click', () => {
+                            const payLoad = {
+                                method: 'start',
+                                clientId: clientId,
+                                gameId: gameId
+                            };
+                            ws.send(JSON.stringify(payLoad));
+                        });
+                        divBoard.appendChild(startBtn);
+                    } else {
+                        const waiting = document.createElement('div');
+                        waiting.textContent = 'Waiting for game creator to start...';
+                        divBoard.appendChild(waiting);
+                    }
+                } else {
+                    // Numeric game UI
+                    const numberContainer = document.createElement('div');
+                    numberContainer.style.display = 'flex';
+                    numberContainer.style.flexDirection = 'column';
+                    numberContainer.style.alignItems = 'center';
+                    numberContainer.style.gap = '10px';
+
+                    const display = document.createElement('div');
+                    display.id = 'numberDisplay';
+                    display.textContent = String(game.value != null ? game.value : (game.state && game.state.value != null ? game.state.value : 0));
+                    display.style.fontSize = '48px';
+                    display.style.width = '200px';
+                    display.style.textAlign = 'center';
+                    display.style.border = '1px solid #ccc';
+                    display.style.padding = '20px';
+                    numberContainer.appendChild(display);
+
+                    const maxDisplay = document.createElement('div');
+                    maxDisplay.id = 'maxDisplay';
+                    maxDisplay.textContent = 0;
+                    maxDisplay.style.fontSize = '12px';
+                    maxDisplay.style.width = '200px';
+                    maxDisplay.style.textAlign = 'center';
+                    maxDisplay.style.padding = '20px';
+                    numberContainer.appendChild(maxDisplay);
+
+                    // create controls overlay for joined-started view instead of inline controls
+                    removeControlsOverlay();
+                    const controlsOverlay2 = document.createElement('div');
+                    controlsOverlay2.id = 'controlsOverlay';
+                    controlsOverlay2.style.position = 'fixed';
+                    controlsOverlay2.style.bottom = '20px';
+                    controlsOverlay2.style.left = '50%';
+                    controlsOverlay2.style.transform = 'translateX(-50%)';
+                    controlsOverlay2.style.display = 'flex';
+                    controlsOverlay2.style.gap = '8px';
+                    controlsOverlay2.style.alignItems = 'center';
+
+                    const input2 = document.createElement('input');
+                    input2.type = 'number';
+                    input2.id = 'addInput';
+                    input2.placeholder = 'Value to add';
+                    input2.style.width = '120px';
+                    input2.step = '1';
+                    input2.min = '1';
+
+                    const addBtn2 = document.createElement('button');
+                    addBtn2.id = 'addBtn';
+                    addBtn2.textContent = 'Add';
+                        addBtn2.addEventListener('click', () => {
+                            const v = Number(input2.value);
+                            if (Number.isNaN(v) || !Number.isInteger(v) || v <= 0) { showError('Enter a whole number greater than 0'); return; }
+                        const payLoad = {
+                            method: 'add',
+                            clientId: clientId,
+                            gameId: gameId,
+                            value: v,
+                            name: username
+                        };
+                        ws.send(JSON.stringify(payLoad));
+                    });
+
+                    const checkBtn2 = document.createElement('button');
+                    checkBtn2.id = 'checkBtn';
+                    checkBtn2.textContent = 'Check';
+                    checkBtn2.addEventListener('click', () => {
+                        const payLoad = { method: 'add', clientId: clientId, gameId: gameId, value: 0, name: username };
+                        ws.send(JSON.stringify(payLoad));
+                    });
+
+                    const foldBtn2 = document.createElement('button');
+                    foldBtn2.textContent = 'Fold';
+                    foldBtn2.addEventListener('click', () => {
+                        ws.send(JSON.stringify({ method: 'fold', clientId: clientId, gameId: gameId }));
+                    });
+
+                    controlsOverlay2.appendChild(input2);
+                    controlsOverlay2.appendChild(addBtn2);
+                    controlsOverlay2.appendChild(checkBtn2);
+                    controlsOverlay2.appendChild(foldBtn2);
+                    document.body.appendChild(controlsOverlay2);
+                    // create cards overlay above controls
+                        removeCardsOverlay();
+                        const cardsOverlay2 = document.createElement('div');
+                        cardsOverlay2.id = 'cardsOverlay';
+                        cardsOverlay2.style.position = 'fixed';
+                        cardsOverlay2.style.bottom = '80px';
+                        cardsOverlay2.style.left = '50%';
+                        cardsOverlay2.style.transform = 'translateX(-50%)';
+                        cardsOverlay2.style.display = 'flex';
+                        cardsOverlay2.style.flexDirection = 'column';
+                        cardsOverlay2.style.gap = '8px';
+                        cardsOverlay2.style.alignItems = 'center';
+                        cardsOverlay2.style.zIndex = '1100';
+                        const yourLabel2 = document.createElement('div');
+                        yourLabel2.textContent = 'Your cards';
+                        yourLabel2.style.fontWeight = '600';
+                        yourLabel2.style.marginBottom = '4px';
+                        cardsOverlay2.appendChild(yourLabel2);
+                        const cardsRow2 = document.createElement('div');
+                        cardsRow2.style.display = 'flex';
+                        cardsRow2.style.gap = '8px';
+                        cardsRow2.id = 'cardsRow';
+                        cardsOverlay2.appendChild(cardsRow2);
+                        document.body.appendChild(cardsOverlay2);
+                    // render community for joined-started view
+                    if (Array.isArray(game.community)){
+                        ensureCommunityContainer();
+                        renderCommunity(game.community, game.round);
+                    } else {
+                        removeCommunityContainer();
+                    }
+
+                    // add round/turn and amounts displays for joined-started view
+                    const headerRow = document.createElement('div');
+                    headerRow.style.display = 'flex';
+                    headerRow.style.gap = '10px';
+
+                    const roundDisplay2 = document.createElement('div');
+                    roundDisplay2.id = 'roundDisplay';
+                    roundDisplay2.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
+                    headerRow.appendChild(roundDisplay2);
+
+                    const turnDisplay2 = document.createElement('div');
+                    turnDisplay2.id = 'turnDisplay';
+                    turnDisplay2.textContent = 'Turn: ' + (game.currentTurnName || '');
+                    headerRow.appendChild(turnDisplay2);
+
+                    const requiredAddDisplay2 = document.createElement('div');
+                    requiredAddDisplay2.id = 'requiredAddDisplay';
+                    requiredAddDisplay2.textContent = 'To add: 0';
+                    headerRow.appendChild(requiredAddDisplay2);
+
+                    const yourAddedDisplay2 = document.createElement('div');
+                    yourAddedDisplay2.id = 'yourAddedDisplay';
+                    yourAddedDisplay2.textContent = 'You added: 0';
+                    headerRow.appendChild(yourAddedDisplay2);
+
+                    // chips widget moved to bottom-left; created via ensureYourChipsContainer()
+
+                    numberContainer.insertBefore(headerRow, numberContainer.firstChild);
+
+                    // render existing messages only if player is in game
+                    const amIInGameJoin = Array.isArray(game.clients) && game.clients.some(c=>c.clientId===clientId);
+                    if (amIInGameJoin) {
+                        ensureMessagesContainer();
+                        if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    } else {
+                        removeMessagesContainer();
+                    }
+
+                    divBoard.appendChild(numberContainer);
+                }
+
+
+
+
+            }
+        }
+
+        function ensureMessagesContainer(){
+            if (messagesContainer && document.body.contains(messagesContainer)) return;
+            messagesContainer = document.createElement('div');
+            messagesContainer.id = 'divMessages';
+            messagesContainer.style.width = '300px';
+            messagesContainer.style.maxHeight = '360px';
+            messagesContainer.style.overflowY = 'auto';
+            messagesContainer.style.border = '1px solid #ccc';
+            messagesContainer.style.padding = '8px';
+            messagesContainer.style.wordBreak = 'break-word';
+            messagesContainer.style.position = 'fixed';
+            messagesContainer.style.right = '20px';
+            messagesContainer.style.top = '100px';
+            messagesContainer.style.background = '#fff';
+            messagesContainer.style.zIndex = '1000';
+            messagesContainer.style.boxShadow = '0 4px 10px rgba(0,0,0,0.15)';
+            document.body.appendChild(messagesContainer);
+        }
+
+        function removeMessagesContainer(){
+            if (messagesContainer && messagesContainer.parentNode) {
+                messagesContainer.parentNode.removeChild(messagesContainer);
+            }
+            messagesContainer = null;
+        }
+
+        // error display
+        let errorTimeout = null;
+        function ensureErrorContainer(){
+            if (document.getElementById('errorContainer')) return;
+            const e = document.createElement('div');
+            e.id = 'errorContainer';
+            e.style.position = 'fixed';
+            e.style.top = '20px';
+            e.style.left = '50%';
+            e.style.transform = 'translateX(-50%)';
+            e.style.padding = '8px 12px';
+            e.style.background = 'transparent';
+            e.style.color = '#c00';
+            e.style.fontWeight = '600';
+            e.style.zIndex = '1100';
+            document.body.appendChild(e);
+        }
+
+        function showError(msg, timeout = 4000){
+            ensureErrorContainer();
+            const e = document.getElementById('errorContainer');
+            if (!e) return;
+            e.textContent = msg;
+            if (errorTimeout) clearTimeout(errorTimeout);
+            if (timeout > 0) errorTimeout = setTimeout(()=>{ e.textContent = ''; }, timeout);
+        }
+
+        function clearError(){
+            const e = document.getElementById('errorContainer');
+            if (e) e.textContent = '';
+            if (errorTimeout) { clearTimeout(errorTimeout); errorTimeout = null; }
+        }
+
+        function renderMessages(messages){
+            if (!messagesContainer) return;
+            while(messagesContainer.firstChild) messagesContainer.removeChild(messagesContainer.firstChild);
+            messages.forEach(m => {
+                const d = document.createElement('div');
+                d.style.padding = '4px 0';
+                // show only text (no timestamp)
+                d.textContent = m.text;
+                messagesContainer.appendChild(d);
+            })
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function removeControlsOverlay(){
+            const existing = document.getElementById('controlsOverlay');
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+            removeCardsOverlay();
+        }
+
+        function removeCardsOverlay(){
+            const existing = document.getElementById('cardsOverlay');
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        }
+
+        // render player's private cards into cardsOverlay
+        function renderCards(cards){
+            const container = document.getElementById('cardsOverlay');
+            if (!container) return;
+            const cardsRow = document.getElementById('cardsRow') || container;
+            while(cardsRow.firstChild) cardsRow.removeChild(cardsRow.firstChild);
+            (cards || []).forEach(code => {
+                // parse rank and suit from server code like 'AS', '10H', 'JD'
+                if (!code) return;
+                const suitChar = code.slice(-1).toUpperCase();
+                const rank = code.slice(0, -1);
+                const suitMap = { 'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣' };
+                const suitSym = suitMap[suitChar] || suitChar;
+                const isRed = suitChar === 'H' || suitChar === 'D';
+
+                const d = document.createElement('div');
+                d.style.minWidth = '60px';
+                d.style.height = '90px';
+                d.style.border = '1px solid #333';
+                d.style.borderRadius = '8px';
+                d.style.display = 'flex';
+                d.style.flexDirection = 'column';
+                d.style.padding = '6px';
+                d.style.background = '#fff';
+                d.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                d.style.color = isRed ? '#c00' : '#000';
+                d.style.fontFamily = 'sans-serif';
+
+                const top = document.createElement('div');
+                top.style.fontSize = '14px';
+                top.style.alignSelf = 'flex-start';
+                top.textContent = rank;
+
+                const middle = document.createElement('div');
+                middle.style.flex = '1';
+                middle.style.display = 'flex';
+                middle.style.alignItems = 'center';
+                middle.style.justifyContent = 'center';
+                middle.style.fontSize = '28px';
+                middle.textContent = suitSym;
+
+                const bottom = document.createElement('div');
+                bottom.style.fontSize = '12px';
+                bottom.style.alignSelf = 'flex-end';
+                bottom.textContent = rank;
+
+                d.appendChild(top);
+                d.appendChild(middle);
+                d.appendChild(bottom);
+                cardsRow.appendChild(d);
+            })
+        }
+
+        // community card area
+        function ensureCommunityContainer(){
+            if (document.getElementById('communityOverlay')) return;
+            const c = document.createElement('div');
+            c.id = 'communityOverlay';
+            c.style.position = 'fixed';
+            c.style.top = '42%';
+            c.style.left = '50%';
+            c.style.transform = 'translateX(-50%)';
+            c.style.display = 'flex';
+            c.style.flexDirection = 'column';
+            c.style.gap = '8px';
+            c.style.alignItems = 'center';
+            c.style.zIndex = '1050';
+            // label (text set by renderCommunity)
+            const lbl = document.createElement('div');
+            lbl.id = 'communityLabel';
+            lbl.textContent = '';
+            lbl.style.fontWeight = '700';
+            lbl.style.marginBottom = '6px';
+            c.appendChild(lbl);
+            const row = document.createElement('div');
+            row.id = 'communityRow';
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            c.appendChild(row);
+            document.body.appendChild(c);
+        }
+
+        function removeCommunityContainer(){
+            const existing = document.getElementById('communityOverlay');
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        }
+
+        function ensureYourChipsContainer(){
+            if (document.getElementById('yourChipsWidget')) return;
+            const c = document.createElement('div');
+            c.id = 'yourChipsWidget';
+            c.style.position = 'fixed';
+            c.style.left = '20px';
+            c.style.bottom = '20px';
+            c.style.display = 'flex';
+            c.style.flexDirection = 'column';
+            c.style.alignItems = 'center';
+            c.style.gap = '6px';
+            c.style.zIndex = '1200';
+            c.style.background = 'rgba(255,255,255,0.95)';
+            c.style.padding = '8px 12px';
+            c.style.borderRadius = '8px';
+            c.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+
+            const icon = document.createElement('div');
+            icon.textContent = 'Your chips';
+            icon.style.fontSize = '12px';
+            icon.style.fontWeight = '600';
+            icon.style.display = 'flex';
+            icon.style.alignItems = 'center';
+            icon.style.gap = '6px';
+            const coin = document.createElement('span');
+            coin.textContent = '🪙';
+            coin.style.fontSize = '14px';
+            icon.insertBefore(coin, icon.firstChild);
+
+            const val = document.createElement('div');
+            val.id = 'yourChipsValue';
+            val.textContent = '0';
+            val.style.fontSize = '32px';
+            val.style.fontWeight = '700';
+            val.style.lineHeight = '1';
+
+            c.appendChild(icon);
+            c.appendChild(val);
+            document.body.appendChild(c);
+        }
+
+        function removeYourChipsContainer(){
+            const existing = document.getElementById('yourChipsWidget');
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        }
+
+        // blind notice (shows "Small Blind" / "Big Blind" to the local blind player)
+        let _blindNoticeTimeout = null;
+        function ensureBlindNotice(){
+            if (document.getElementById('blindNotice')) return;
+            const d = document.createElement('div');
+            d.id = 'blindNotice';
+            d.style.position = 'fixed';
+            d.style.bottom = '120px';
+            d.style.left = '50%';
+            d.style.transform = 'translateX(-50%)';
+            d.style.background = 'rgba(255,240,200,0.98)';
+            d.style.color = '#222';
+            d.style.padding = '8px 12px';
+            d.style.border = '1px solid #e6b800';
+            d.style.borderRadius = '6px';
+            d.style.fontWeight = '700';
+            d.style.zIndex = '1300';
+            d.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+            d.style.display = 'none';
+            document.body.appendChild(d);
+        }
+
+        function showBlindNotice(text, timeout = 4000){
+            ensureBlindNotice();
+            const d = document.getElementById('blindNotice');
+            if (!d) return;
+            d.textContent = text;
+            d.style.display = 'block';
+            if (_blindNoticeTimeout) clearTimeout(_blindNoticeTimeout);
+            if (timeout > 0) _blindNoticeTimeout = setTimeout(()=>{ d.style.display = 'none'; _blindNoticeTimeout = null; }, timeout);
+        }
+
+        function clearBlindNotice(){
+            const d = document.getElementById('blindNotice');
+            if (d) d.style.display = 'none';
+            if (_blindNoticeTimeout) { clearTimeout(_blindNoticeTimeout); _blindNoticeTimeout = null; }
+        }
+
+        function renderCommunity(cards, round){
+            const container = document.getElementById('communityOverlay');
+            if (!container) return;
+            const row = document.getElementById('communityRow');
+            const lbl = document.getElementById('communityLabel');
+            if (!row || !lbl) return;
+            // show the label only when there are community cards OR at the start of round 2+
+            const hasCards = Array.isArray(cards) && cards.length > 0;
+            const showLabel = hasCards || (typeof round === 'number' && round >= 2);
+            lbl.textContent = showLabel ? 'River' : '';
+            while(row.firstChild) row.removeChild(row.firstChild);
+            (cards || []).forEach(code => {
+                if (!code) return;
+                const suitChar = code.slice(-1).toUpperCase();
+                const rank = code.slice(0, -1);
+                const suitMap = { 'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣' };
+                const suitSym = suitMap[suitChar] || suitChar;
+                const isRed = suitChar === 'H' || suitChar === 'D';
+
+                const d = document.createElement('div');
+                d.style.minWidth = '60px';
+                d.style.height = '90px';
+                d.style.border = '1px solid #333';
+                d.style.borderRadius = '8px';
+                d.style.display = 'flex';
+                d.style.flexDirection = 'column';
+                d.style.padding = '6px';
+                d.style.background = '#fff';
+                d.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+                d.style.color = isRed ? '#c00' : '#000';
+                d.style.fontFamily = 'sans-serif';
+
+                const top = document.createElement('div');
+                top.style.fontSize = '14px';
+                top.style.alignSelf = 'flex-start';
+                top.textContent = rank;
+
+                const middle = document.createElement('div');
+                middle.style.flex = '1';
+                middle.style.display = 'flex';
+                middle.style.alignItems = 'center';
+                middle.style.justifyContent = 'center';
+                middle.style.fontSize = '28px';
+                middle.textContent = suitSym;
+
+                const bottom = document.createElement('div');
+                bottom.style.fontSize = '12px';
+                bottom.style.alignSelf = 'flex-end';
+                bottom.textContent = rank;
+
+                d.appendChild(top);
+                d.appendChild(middle);
+                d.appendChild(bottom);
+                row.appendChild(d);
+            })
+        }
+
+        
+    </script>
+</body>
+</html>
