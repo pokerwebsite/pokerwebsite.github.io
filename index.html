@@ -7,20 +7,255 @@
 </head>
 <body>
     <style>
-        body { margin:0; font-family: sans-serif; min-height:100vh; position:relative; }
-        .screen { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:24px; background:transparent; opacity:0; pointer-events:none; transition:opacity 300ms ease; }
+        body { 
+            margin:0; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            min-height:100vh; 
+            position:relative; 
+            background: linear-gradient(135deg, #0d7a3d 0%, #0a5a2e 100%);
+            background-attachment: fixed;
+        }
+        .screen { 
+            position:absolute; 
+            inset:0; 
+            display:flex; 
+            flex-direction:column; 
+            align-items:center; 
+            justify-content:flex-start; 
+            padding:24px; 
+            background:transparent; 
+            opacity:0; 
+            pointer-events:none; 
+            transition:opacity 300ms ease; 
+        }
         .screen.active { opacity:1; pointer-events:auto; }
+        
         /* Username screen larger */
         #usernamePage { gap:12px; display:flex; align-items:center; justify-content:center; }
-        #usernamePage h2 { font-size:32px; margin:0; }
-        #usernamePage input { font-size:18px; padding:8px 12px; width:360px; }
+        #usernamePage h2 { 
+            font-size:32px; 
+            margin:0; 
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        #usernamePage input { 
+            font-size:18px; 
+            padding:12px 16px; 
+            width:360px; 
+            border: 2px solid #0a5a2e;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        #usernamePage button, #btnSet {
+            font-size: 18px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #d4af37 0%, #b8941a 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #usernamePage button:hover, #btnSet:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+        }
+        #usernamePage button:active, #btnSet:active {
+            transform: translateY(0);
+        }
 
         /* Lobby centered and larger controls */
         #lobbyScreen { gap:12px; justify-content:center; align-items:center; }
         #lobbyScreen .lobbyControls { display:flex; gap:12px; align-items:center; font-size:18px; }
-        #lobbyScreen .lobbyControls button, #lobbyScreen .lobbyControls input { font-size:16px; padding:8px 10px; }
+        #lobbyScreen .lobbyControls button { 
+            font-size:16px; 
+            padding:10px 20px; 
+            background: linear-gradient(135deg, #d4af37 0%, #b8941a 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #lobbyScreen .lobbyControls button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+        }
+        #lobbyScreen .lobbyControls input { 
+            font-size:16px; 
+            padding:10px 16px; 
+            border: 2px solid #0a5a2e;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
 
         #gameScreen { gap:12px; }
+        
+        /* Start button and waiting text positioning */
+        #startGameButton, #waitingForHost {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 2000;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        #startGameButton {
+            background: linear-gradient(135deg, #d4af37 0%, #b8941a 100%);
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        #startGameButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+        }
+        
+        #startGameButton:active {
+            transform: translateY(0);
+        }
+        
+        #waitingForHost {
+            background: rgba(255, 255, 255, 0.95);
+            color: #0a5a2e;
+            padding: 12px 20px;
+        }
+        
+        #gameCodeDisplay {
+            position: fixed;
+            top: 70px;
+            left: 20px;
+            z-index: 2000;
+            background: rgba(255, 255, 255, 0.95);
+            color: #0a5a2e;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        /* Button styling improvements */
+        button:not(#startGameButton):not(#waitingForHost) {
+            background: linear-gradient(135deg, #d4af37 0%, #b8941a 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:not(#startGameButton):not(#waitingForHost):hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: #999;
+        }
+        
+        input[type="number"], input[type="text"] {
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.95);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        
+        /* Table visualization styles */
+        #pokerTable {
+            position: relative;
+            width: 600px;
+            height: 400px;
+            margin: 20px auto;
+        }
+        
+        .table-surface {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 250px;
+            background: linear-gradient(135deg, #1a5c2e 0%, #0d3d1f 100%);
+            border: 8px solid #8B4513;
+            border-radius: 50%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 50px rgba(0,0,0,0.3);
+        }
+        
+        .table-pot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: 700;
+            color: #d4af37;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        
+        .player-seat {
+            position: absolute;
+            background: rgba(255,255,255,0.95);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+            color: #0a5a2e;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            min-width: 100px;
+            text-align: center;
+            border: 2px solid transparent;
+        }
+        
+        .player-seat.current-turn {
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            border: 2px solid #ffb800;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 4px 12px rgba(0,0,0,0.3);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from {
+                box-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 4px 12px rgba(0,0,0,0.3);
+            }
+            to {
+                box-shadow: 0 0 30px rgba(255, 215, 0, 1), 0 4px 12px rgba(0,0,0,0.3);
+            }
+        }
+        
+        .player-seat.chip-added {
+            animation: chipPulse 0.6s ease-out;
+        }
+        
+        @keyframes chipPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+        
+        .player-seat.user-seat {
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: #fff;
+            border: 2px solid #2a6fa8;
+        }
     </style>
 
     <div id="usernamePage" class="screen active">
@@ -49,7 +284,7 @@
         let playerColor = null;
         let username = null;
         let pot = 0;
-        let ws = new WebSocket("wss://server-u3li.onrender.com/ws")
+        let ws = new WebSocket("ws://localhost:9090")
         const btnCreate = document.getElementById("btnCreate");
         const btnJoin = document.getElementById("btnJoin");
         const txtGameId = document.getElementById("txtGameId");
@@ -181,17 +416,27 @@
                 if (yourAddedDisplay) yourAddedDisplay.textContent = 'You added: ' + myAdded;
                 const myChips = (game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0;
                 if (yourChipsValue) yourChipsValue.textContent = String(myChips);
+                
+                // Update player list
+                updatePlayerList(game);
 
                 // create/show messages only if this client is in the game
                 const amIInGame = Array.isArray(game.clients) && game.clients.some(c => c.clientId === clientId);
                 if (amIInGame) {
                     ensureMessagesContainer();
                     if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    // update turn indicator (only if game has started)
+                    if (game.started) {
+                        updateTurnIndicator(game.currentTurnName || '');
+                    } else {
+                        removeTurnIndicator();
+                    }
                     // community area
                     ensureCommunityContainer();
                     if (Array.isArray(game.community)) renderCommunity(game.community, game.round);
                     // show chips widget
                     ensureYourChipsContainer();
+                    updatePlayerList(game);
                     const vElm = document.getElementById('yourChipsValue');
                     if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
                     // show blind notice on start if applicable
@@ -199,23 +444,30 @@
                     const bbIndexStart = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
                     const sbIdStart = (Array.isArray(game.clients) && sbIndexStart !== null && game.clients[sbIndexStart]) ? game.clients[sbIndexStart].clientId : null;
                     const bbIdStart = (Array.isArray(game.clients) && bbIndexStart !== null && game.clients[bbIndexStart]) ? game.clients[bbIndexStart].clientId : null;
-                    if (clientId === bbIdStart) { showBlindNotice('You are the Big Blind'); }
-                    else if (clientId === sbIdStart) { showBlindNotice('You are the Small Blind'); }
-                    else { clearBlindNotice(); }
-                    // show blind notice if this client is small or big blind
-                    const sbIndex = typeof game.smallBlindIndex === 'number' ? game.smallBlindIndex : null;
-                    const bbIndex = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
-                    const sbId = (Array.isArray(game.clients) && sbIndex !== null && game.clients[sbIndex]) ? game.clients[sbIndex].clientId : null;
-                    const bbId = (Array.isArray(game.clients) && bbIndex !== null && game.clients[bbIndex]) ? game.clients[bbIndex].clientId : null;
-                    if (clientId === bbId) {
-                        showBlindNotice('You are the Big Blind');
-                    } else if (clientId === sbId) {
-                        showBlindNotice('You are the Small Blind');
+                    // Only show blind notices in first round
+                    const currentRound = typeof game.round === 'number' ? game.round : 0;
+                    if (currentRound <= 1) {
+                        if (clientId === bbIdStart) { showBlindNotice('You are the Big Blind'); }
+                        else if (clientId === sbIdStart) { showBlindNotice('You are the Small Blind'); }
+                        else { clearBlindNotice(); }
+                        // show blind notice if this client is small or big blind
+                        const sbIndex = typeof game.smallBlindIndex === 'number' ? game.smallBlindIndex : null;
+                        const bbIndex = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
+                        const sbId = (Array.isArray(game.clients) && sbIndex !== null && game.clients[sbIndex]) ? game.clients[sbIndex].clientId : null;
+                        const bbId = (Array.isArray(game.clients) && bbIndex !== null && game.clients[bbIndex]) ? game.clients[bbIndex].clientId : null;
+                        if (clientId === bbId) {
+                            showBlindNotice('You are the Big Blind');
+                        } else if (clientId === sbId) {
+                            showBlindNotice('You are the Small Blind');
+                        } else {
+                            clearBlindNotice();
+                        }
                     } else {
                         clearBlindNotice();
                     }
                 } else {
                     removeMessagesContainer();
+                    removeTurnIndicator();
                     removeCommunityContainer();
                     removeYourChipsContainer();
                 }
@@ -223,26 +475,50 @@
                 // enable/disable inputs based on turn and gray them out
                 const addInput = document.getElementById('addInput');
                 const addBtn = document.getElementById('addBtn');
+                const checkBtn = document.getElementById('checkBtn');
+                const foldBtn = document.getElementById('foldBtn');
                 const isMyTurn = (() => {
                     if (!game.started || game.ended) return false;
                     const ti = typeof game.turnIndex === 'number' ? game.turnIndex : 0;
                     const current = (game.clients || [])[ti];
                     return current && current.clientId === clientId;
                 })();
+                
+                // Check if player can check (their amountAdded equals the max)
+                const myAddedForCheck = (game.amountsAdded && typeof game.amountsAdded[clientId] === 'number') ? game.amountsAdded[clientId] : 0;
+                const targetForCheck = typeof game.max === 'number' ? game.max : 0;
+                const canCheck = myAddedForCheck >= targetForCheck;
+                
                 if (addInput) {
                     addInput.disabled = !isMyTurn;
                     addInput.min = Math.max(1, required);
-                    addInput.style.background = addInput.disabled ? '#eee' : '';
+                    addInput.style.background = addInput.disabled ? 'rgba(238,238,238,0.7)' : 'rgba(255,255,255,0.95)';
+                    addInput.style.opacity = addInput.disabled ? '0.6' : '1';
                 }
                 if (addBtn) {
                     addBtn.disabled = !isMyTurn;
-                    addBtn.style.background = addBtn.disabled ? '#eee' : '';
+                    addBtn.style.opacity = addBtn.disabled ? '0.6' : '1';
+                }
+                if (checkBtn) {
+                    checkBtn.disabled = !isMyTurn || !canCheck;
+                    checkBtn.style.opacity = (!isMyTurn || !canCheck) ? '0.6' : '1';
+                }
+                if (foldBtn) {
+                    foldBtn.disabled = !isMyTurn;
+                    foldBtn.style.opacity = foldBtn.disabled ? '0.6' : '1';
                 }
             }
 
             //start: server signals that the game has started; render numeric UI
             if (response.method === "start"){
                 const game = response.game || {};
+                // Remove start button and waiting text when game starts
+                const existingStartBtn = document.getElementById('startGameButton');
+                const existingWaiting = document.getElementById('waitingForHost');
+                const existingGameCode = document.getElementById('gameCodeDisplay');
+                if (existingStartBtn) existingStartBtn.remove();
+                if (existingWaiting) existingWaiting.remove();
+                if (existingGameCode) existingGameCode.remove();
                 // clear board and controls overlay
                 while(divBoard.firstChild) divBoard.removeChild(divBoard.firstChild);
                 removeControlsOverlay();
@@ -262,26 +538,44 @@
                 numberContainer.style.gap = '10px';
                 const headerRow = document.createElement('div');
                 headerRow.style.display = 'flex';
-                headerRow.style.gap = '10px';
+                headerRow.style.gap = '16px';
+                headerRow.style.flexWrap = 'wrap';
+                headerRow.style.justifyContent = 'center';
+                headerRow.style.padding = '12px';
+                headerRow.style.background = 'rgba(255,255,255,0.1)';
+                headerRow.style.borderRadius = '8px';
+                headerRow.style.marginBottom = '8px';
 
                 const roundDisplay = document.createElement('div');
                 roundDisplay.id = 'roundDisplay';
                 roundDisplay.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
+                roundDisplay.style.color = '#fff';
+                roundDisplay.style.fontWeight = '600';
+                roundDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                 headerRow.appendChild(roundDisplay);
 
                 const turnDisplay = document.createElement('div');
                 turnDisplay.id = 'turnDisplay';
                 turnDisplay.textContent = 'Turn: ' + (game.currentTurnName || '');
+                turnDisplay.style.color = '#fff';
+                turnDisplay.style.fontWeight = '600';
+                turnDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                 headerRow.appendChild(turnDisplay);
 
                 const requiredAddDisplay = document.createElement('div');
                 requiredAddDisplay.id = 'requiredAddDisplay';
                 requiredAddDisplay.textContent = 'To add: 0';
+                requiredAddDisplay.style.color = '#fff';
+                requiredAddDisplay.style.fontWeight = '600';
+                requiredAddDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                 headerRow.appendChild(requiredAddDisplay);
 
                 const yourAddedDisplay = document.createElement('div');
                 yourAddedDisplay.id = 'yourAddedDisplay';
                 yourAddedDisplay.textContent = 'You added: 0';
+                yourAddedDisplay.style.color = '#fff';
+                yourAddedDisplay.style.fontWeight = '600';
+                yourAddedDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                 headerRow.appendChild(yourAddedDisplay);
 
                 // chips widget moved to bottom-left; created via ensureYourChipsContainer()
@@ -291,11 +585,16 @@
                 const display = document.createElement('div');
                 display.id = 'numberDisplay';
                 display.textContent = String(game.value != null ? game.value : (game.state && game.state.value != null ? game.state.value : 0));
-                display.style.fontSize = '48px';
-                display.style.width = '200px';
+                display.style.fontSize = '64px';
+                display.style.fontWeight = '700';
+                display.style.width = '240px';
                 display.style.textAlign = 'center';
-                display.style.border = '1px solid #ccc';
-                display.style.padding = '20px';
+                display.style.border = '3px solid #d4af37';
+                display.style.borderRadius = '12px';
+                display.style.padding = '24px';
+                display.style.background = 'rgba(255,255,255,0.95)';
+                display.style.color = '#0a5a2e';
+                display.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
                 numberContainer.appendChild(display);
 
                 // create controls overlay (bottom-center) and attach inputs there
@@ -307,14 +606,20 @@
                 controlsOverlay.style.left = '50%';
                 controlsOverlay.style.transform = 'translateX(-50%)';
                 controlsOverlay.style.display = 'flex';
-                controlsOverlay.style.gap = '8px';
+                controlsOverlay.style.gap = '12px';
                 controlsOverlay.style.alignItems = 'center';
+                controlsOverlay.style.padding = '12px 16px';
+                controlsOverlay.style.background = 'rgba(255,255,255,0.95)';
+                controlsOverlay.style.borderRadius = '12px';
+                controlsOverlay.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+                controlsOverlay.style.zIndex = '1000';
 
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.id = 'addInput';
-                input.placeholder = 'Value to add';
-                input.style.width = '120px';
+                input.placeholder = 'Amount';
+                input.style.width = '140px';
+                input.style.fontSize = '16px';
                 input.step = '1';
                 input.min = '1';
 
@@ -367,23 +672,26 @@
                 const cardsOverlay = document.createElement('div');
                 cardsOverlay.id = 'cardsOverlay';
                 cardsOverlay.style.position = 'fixed';
-                cardsOverlay.style.bottom = '80px';
+                cardsOverlay.style.bottom = '120px';
                 cardsOverlay.style.left = '50%';
                 cardsOverlay.style.transform = 'translateX(-50%)';
                 cardsOverlay.style.display = 'flex';
                 cardsOverlay.style.flexDirection = 'column';
-                cardsOverlay.style.gap = '8px';
+                cardsOverlay.style.gap = '12px';
                 cardsOverlay.style.alignItems = 'center';
                 cardsOverlay.style.zIndex = '1100';
                 // label
                 const yourLabel = document.createElement('div');
                 yourLabel.textContent = 'Your cards';
-                yourLabel.style.fontWeight = '600';
+                yourLabel.style.fontWeight = '700';
+                yourLabel.style.fontSize = '18px';
+                yourLabel.style.color = '#fff';
+                yourLabel.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
                 yourLabel.style.marginBottom = '4px';
                 cardsOverlay.appendChild(yourLabel);
                 const cardsRow = document.createElement('div');
                 cardsRow.style.display = 'flex';
-                cardsRow.style.gap = '8px';
+                cardsRow.style.gap = '12px';
                 cardsRow.id = 'cardsRow';
                 cardsOverlay.appendChild(cardsRow);
                 document.body.appendChild(cardsOverlay);
@@ -405,15 +713,28 @@
                 if (amIInGameStart) {
                     ensureMessagesContainer();
                     if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    // Only show turn indicator if game has started
+                    if (game.started) {
+                        updateTurnIndicator(game.currentTurnName || '');
+                    } else {
+                        removeTurnIndicator();
+                    }
                     // reset local per-round counters on start as well
                     ensureYourChipsContainer();
+                    updatePlayerList(game);
                     const sbIndexJoin = typeof game.smallBlindIndex === 'number' ? game.smallBlindIndex : null;
                     const bbIndexJoin = typeof game.bigBlindIndex === 'number' ? game.bigBlindIndex : null;
                     const sbIdJoin = (Array.isArray(game.clients) && sbIndexJoin !== null && game.clients[sbIndexJoin]) ? game.clients[sbIndexJoin].clientId : null;
                     const bbIdJoin = (Array.isArray(game.clients) && bbIndexJoin !== null && game.clients[bbIndexJoin]) ? game.clients[bbIndexJoin].clientId : null;
-                    if (clientId === bbIdJoin) { showBlindNotice('You are the Big Blind'); }
-                    else if (clientId === sbIdJoin) { showBlindNotice('You are the Small Blind'); }
-                    else { clearBlindNotice(); }
+                    // Only show blind notices in first round
+                    const currentRoundStart = typeof game.round === 'number' ? game.round : 0;
+                    if (currentRoundStart <= 1) {
+                        if (clientId === bbIdJoin) { showBlindNotice('You are the Big Blind'); }
+                        else if (clientId === sbIdJoin) { showBlindNotice('You are the Small Blind'); }
+                        else { clearBlindNotice(); }
+                    } else {
+                        clearBlindNotice();
+                    }
                     const vElm = document.getElementById('yourChipsValue');
                     if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
                     amountAdded = 0;
@@ -435,7 +756,12 @@
                     divPlayers.removeChild(divPlayers.firstChild)
                 const di = document.createElement("div");
                     di.style.width = "200px";
-                    di.style.background = "White";
+                    di.style.background = "rgba(255,255,255,0.95)";
+                    di.style.padding = "10px 16px";
+                    di.style.borderRadius = "8px";
+                    di.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+                    di.style.color = "#0a5a2e";
+                    di.style.fontWeight = "600";
                     di.textContent = "current game code: " + (response.gameId || (game && game.id));
                     divPlayers.appendChild(di);
                 // show chat once players have joined (even before the game starts)
@@ -443,9 +769,16 @@
                 if (amIInGameNow) {
                     ensureMessagesContainer();
                     if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    // Only show turn indicator if game has started
+                    if (game.started) {
+                        updateTurnIndicator(game.currentTurnName || '');
+                    } else {
+                        removeTurnIndicator();
+                    }
                     ensureCommunityContainer();
                     if (Array.isArray(game.community)) renderCommunity(game.community, game.round);
                     ensureYourChipsContainer();
+                    updatePlayerList(game);
                 } else {
                     removeMessagesContainer();
                     removeCommunityContainer();
@@ -457,8 +790,26 @@
 
                 // If the game hasn't started yet, show start button to creator, else show waiting text
                 if (!game.started) {
+                    // Remove any existing start button or waiting text
+                    const existingStartBtn = document.getElementById('startGameButton');
+                    const existingWaiting = document.getElementById('waitingForHost');
+                    const existingGameCode = document.getElementById('gameCodeDisplay');
+                    if (existingStartBtn) existingStartBtn.remove();
+                    if (existingWaiting) existingWaiting.remove();
+                    if (existingGameCode) existingGameCode.remove();
+                    
+                    // Get game code
+                    const currentGameId = gameId || (game && game.id) || (response.gameId);
+                    
+                    // Create game code display
+                    const gameCodeDisplay = document.createElement('div');
+                    gameCodeDisplay.id = 'gameCodeDisplay';
+                    gameCodeDisplay.textContent = 'Game Code: ' + currentGameId;
+                    document.body.appendChild(gameCodeDisplay);
+                    
                     if (game.creator === clientId) {
                         const startBtn = document.createElement('button');
+                        startBtn.id = 'startGameButton';
                         startBtn.textContent = 'Start Game';
                         startBtn.addEventListener('click', () => {
                             const payLoad = {
@@ -468,13 +819,21 @@
                             };
                             ws.send(JSON.stringify(payLoad));
                         });
-                        divBoard.appendChild(startBtn);
+                        document.body.appendChild(startBtn);
                     } else {
                         const waiting = document.createElement('div');
-                        waiting.textContent = 'Waiting for game creator to start...';
-                        divBoard.appendChild(waiting);
+                        waiting.id = 'waitingForHost';
+                        waiting.textContent = 'Waiting for host to start';
+                        document.body.appendChild(waiting);
                     }
                 } else {
+                    // Remove start button and waiting text when game starts
+                    const existingStartBtn = document.getElementById('startGameButton');
+                    const existingWaiting = document.getElementById('waitingForHost');
+                    const existingGameCode = document.getElementById('gameCodeDisplay');
+                    if (existingStartBtn) existingStartBtn.remove();
+                    if (existingWaiting) existingWaiting.remove();
+                    if (existingGameCode) existingGameCode.remove();
                     // Numeric game UI
                     const numberContainer = document.createElement('div');
                     numberContainer.style.display = 'flex';
@@ -485,20 +844,28 @@
                     const display = document.createElement('div');
                     display.id = 'numberDisplay';
                     display.textContent = String(game.value != null ? game.value : (game.state && game.state.value != null ? game.state.value : 0));
-                    display.style.fontSize = '48px';
-                    display.style.width = '200px';
+                    display.style.fontSize = '64px';
+                    display.style.fontWeight = '700';
+                    display.style.width = '240px';
                     display.style.textAlign = 'center';
-                    display.style.border = '1px solid #ccc';
-                    display.style.padding = '20px';
+                    display.style.border = '3px solid #d4af37';
+                    display.style.borderRadius = '12px';
+                    display.style.padding = '24px';
+                    display.style.background = 'rgba(255,255,255,0.95)';
+                    display.style.color = '#0a5a2e';
+                    display.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
                     numberContainer.appendChild(display);
 
                     const maxDisplay = document.createElement('div');
                     maxDisplay.id = 'maxDisplay';
                     maxDisplay.textContent = 0;
-                    maxDisplay.style.fontSize = '12px';
-                    maxDisplay.style.width = '200px';
+                    maxDisplay.style.fontSize = '14px';
+                    maxDisplay.style.fontWeight = '600';
+                    maxDisplay.style.width = '240px';
                     maxDisplay.style.textAlign = 'center';
-                    maxDisplay.style.padding = '20px';
+                    maxDisplay.style.padding = '12px';
+                    maxDisplay.style.color = '#fff';
+                    maxDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                     numberContainer.appendChild(maxDisplay);
 
                     // create controls overlay for joined-started view instead of inline controls
@@ -510,14 +877,20 @@
                     controlsOverlay2.style.left = '50%';
                     controlsOverlay2.style.transform = 'translateX(-50%)';
                     controlsOverlay2.style.display = 'flex';
-                    controlsOverlay2.style.gap = '8px';
+                    controlsOverlay2.style.gap = '12px';
                     controlsOverlay2.style.alignItems = 'center';
+                    controlsOverlay2.style.padding = '12px 16px';
+                    controlsOverlay2.style.background = 'rgba(255,255,255,0.95)';
+                    controlsOverlay2.style.borderRadius = '12px';
+                    controlsOverlay2.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+                    controlsOverlay2.style.zIndex = '1000';
 
                     const input2 = document.createElement('input');
                     input2.type = 'number';
                     input2.id = 'addInput';
-                    input2.placeholder = 'Value to add';
-                    input2.style.width = '120px';
+                    input2.placeholder = 'Amount';
+                    input2.style.width = '140px';
+                    input2.style.fontSize = '16px';
                     input2.step = '1';
                     input2.min = '1';
 
@@ -561,17 +934,20 @@
                         const cardsOverlay2 = document.createElement('div');
                         cardsOverlay2.id = 'cardsOverlay';
                         cardsOverlay2.style.position = 'fixed';
-                        cardsOverlay2.style.bottom = '80px';
+                        cardsOverlay2.style.bottom = '120px';
                         cardsOverlay2.style.left = '50%';
                         cardsOverlay2.style.transform = 'translateX(-50%)';
                         cardsOverlay2.style.display = 'flex';
                         cardsOverlay2.style.flexDirection = 'column';
-                        cardsOverlay2.style.gap = '8px';
+                        cardsOverlay2.style.gap = '12px';
                         cardsOverlay2.style.alignItems = 'center';
                         cardsOverlay2.style.zIndex = '1100';
                         const yourLabel2 = document.createElement('div');
                         yourLabel2.textContent = 'Your cards';
-                        yourLabel2.style.fontWeight = '600';
+                        yourLabel2.style.fontWeight = '700';
+                        yourLabel2.style.fontSize = '18px';
+                        yourLabel2.style.color = '#fff';
+                        yourLabel2.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
                         yourLabel2.style.marginBottom = '4px';
                         cardsOverlay2.appendChild(yourLabel2);
                         const cardsRow2 = document.createElement('div');
@@ -591,26 +967,44 @@
                     // add round/turn and amounts displays for joined-started view
                     const headerRow = document.createElement('div');
                     headerRow.style.display = 'flex';
-                    headerRow.style.gap = '10px';
+                    headerRow.style.gap = '16px';
+                    headerRow.style.flexWrap = 'wrap';
+                    headerRow.style.justifyContent = 'center';
+                    headerRow.style.padding = '12px';
+                    headerRow.style.background = 'rgba(255,255,255,0.1)';
+                    headerRow.style.borderRadius = '8px';
+                    headerRow.style.marginBottom = '8px';
 
                     const roundDisplay2 = document.createElement('div');
                     roundDisplay2.id = 'roundDisplay';
                     roundDisplay2.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
+                    roundDisplay2.style.color = '#fff';
+                    roundDisplay2.style.fontWeight = '600';
+                    roundDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                     headerRow.appendChild(roundDisplay2);
 
                     const turnDisplay2 = document.createElement('div');
                     turnDisplay2.id = 'turnDisplay';
                     turnDisplay2.textContent = 'Turn: ' + (game.currentTurnName || '');
+                    turnDisplay2.style.color = '#fff';
+                    turnDisplay2.style.fontWeight = '600';
+                    turnDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                     headerRow.appendChild(turnDisplay2);
 
                     const requiredAddDisplay2 = document.createElement('div');
                     requiredAddDisplay2.id = 'requiredAddDisplay';
                     requiredAddDisplay2.textContent = 'To add: 0';
+                    requiredAddDisplay2.style.color = '#fff';
+                    requiredAddDisplay2.style.fontWeight = '600';
+                    requiredAddDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                     headerRow.appendChild(requiredAddDisplay2);
 
                     const yourAddedDisplay2 = document.createElement('div');
                     yourAddedDisplay2.id = 'yourAddedDisplay';
                     yourAddedDisplay2.textContent = 'You added: 0';
+                    yourAddedDisplay2.style.color = '#fff';
+                    yourAddedDisplay2.style.fontWeight = '600';
+                    yourAddedDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                     headerRow.appendChild(yourAddedDisplay2);
 
                     // chips widget moved to bottom-left; created via ensureYourChipsContainer()
@@ -622,8 +1016,15 @@
                     if (amIInGameJoin) {
                         ensureMessagesContainer();
                         if (Array.isArray(game.messages)) renderMessages(game.messages);
+                        // Only show turn indicator if game has started
+                        if (game.started) {
+                            updateTurnIndicator(game.currentTurnName || '');
+                        } else {
+                            removeTurnIndicator();
+                        }
                     } else {
                         removeMessagesContainer();
+                        removeTurnIndicator();
                     }
 
                     divBoard.appendChild(numberContainer);
@@ -648,9 +1049,11 @@
             messagesContainer.style.position = 'fixed';
             messagesContainer.style.right = '20px';
             messagesContainer.style.top = '100px';
-            messagesContainer.style.background = '#fff';
+            messagesContainer.style.background = 'rgba(255,255,255,0.98)';
+            messagesContainer.style.borderRadius = '12px';
+            messagesContainer.style.border = '2px solid rgba(255,255,255,0.3)';
             messagesContainer.style.zIndex = '1000';
-            messagesContainer.style.boxShadow = '0 4px 10px rgba(0,0,0,0.15)';
+            messagesContainer.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
             document.body.appendChild(messagesContainer);
         }
 
@@ -659,6 +1062,45 @@
                 messagesContainer.parentNode.removeChild(messagesContainer);
             }
             messagesContainer = null;
+        }
+
+        // Turn indicator
+        function ensureTurnIndicator(){
+            if (document.getElementById('turnIndicator')) return;
+            const d = document.createElement('div');
+            d.id = 'turnIndicator';
+            d.style.position = 'fixed';
+            d.style.right = '20px';
+            // Position below chat box: chat box is at top: 100px with maxHeight: 360px, so ends at 460px, add 10px gap
+            d.style.top = '470px';
+            d.style.background = 'rgba(255,255,255,0.98)';
+            d.style.color = '#0a5a2e';
+            d.style.padding = '10px 16px';
+            d.style.borderRadius = '8px';
+            d.style.border = '2px solid rgba(255,255,255,0.3)';
+            d.style.fontWeight = '600';
+            d.style.fontSize = '14px';
+            d.style.zIndex = '1000';
+            d.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+            d.style.width = '300px';
+            d.style.textAlign = 'center';
+            d.textContent = 'Turn: -';
+            document.body.appendChild(d);
+        }
+
+        function updateTurnIndicator(turnName){
+            ensureTurnIndicator();
+            const d = document.getElementById('turnIndicator');
+            if (d) {
+                d.textContent = 'Turn: ' + (turnName || '-');
+            }
+        }
+
+        function removeTurnIndicator(){
+            const existing = document.getElementById('turnIndicator');
+            if (existing && existing.parentNode) {
+                existing.parentNode.removeChild(existing);
+            }
         }
 
         // error display
@@ -718,6 +1160,182 @@
             if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
         }
 
+        // Track previous amounts to detect chip additions
+        let previousAmounts = {};
+
+        // Render poker table with players around it
+        function renderPokerTable(game) {
+            const container = document.getElementById('pokerTable');
+            if (!container) return;
+            
+            // Clear previous content
+            while(container.firstChild) container.removeChild(container.firstChild);
+            
+            // Create table surface
+            const tableSurface = document.createElement('div');
+            tableSurface.className = 'table-surface';
+            container.appendChild(tableSurface);
+            
+            // Create pot display
+            const potDisplay = document.createElement('div');
+            potDisplay.className = 'table-pot';
+            const potValue = typeof game.pot === 'number' ? game.pot : (typeof game.value === 'number' ? game.value : 0);
+            potDisplay.textContent = 'Pot: ' + potValue;
+            // Totals above pot: total added and total required
+            const totals = document.createElement('div');
+            totals.id = 'potTotals';
+            totals.style.position = 'absolute';
+            totals.style.left = '50%';
+            totals.style.top = '40%';
+            totals.style.transform = 'translate(-50%, -100%)';
+            totals.style.display = 'flex';
+            totals.style.flexDirection = 'column';
+            totals.style.alignItems = 'center';
+            totals.style.gap = '6px';
+            totals.style.zIndex = '15';
+
+            const totalAddedDisplay = document.createElement('div');
+            totalAddedDisplay.id = 'totalAddedDisplay';
+            totalAddedDisplay.style.color = '#fff';
+            totalAddedDisplay.style.fontWeight = '700';
+            totalAddedDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+
+            const totalRequiredDisplay = document.createElement('div');
+            totalRequiredDisplay.id = 'totalRequiredDisplay';
+            totalRequiredDisplay.style.color = '#ffd700';
+            totalRequiredDisplay.style.fontWeight = '700';
+            totalRequiredDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+
+            // compute totals
+            const amounts = game.amountsAdded || {};
+            let totalAdded = 0;
+            Object.keys(amounts).forEach(k => { if (typeof amounts[k] === 'number') totalAdded += amounts[k]; });
+            const target = typeof game.max === 'number' ? game.max : 0;
+            const playersCount = Array.isArray(game.clients) ? game.clients.length : 0;
+            const totalRequired = Math.max(0, target * playersCount - totalAdded);
+
+            totalAddedDisplay.textContent = 'Total added: ' + totalAdded;
+            totalRequiredDisplay.textContent = 'Total required: ' + totalRequired;
+
+            totals.appendChild(totalAddedDisplay);
+            totals.appendChild(totalRequiredDisplay);
+            container.appendChild(totals);
+
+            container.appendChild(potDisplay);
+            
+            // Get players list
+            const players = Array.isArray(game.clients) ? game.clients : [];
+            if (players.length === 0) return;
+            
+            // Find current player index
+            const currentPlayerIndex = players.findIndex(p => p.clientId === clientId);
+            
+            // Find user index and reorder so user is always at position for bottom
+            let playersOrdered = [...players];
+            if (currentPlayerIndex >= 0) {
+                // Move user to last position (bottom of table)
+                const userPlayer = playersOrdered.splice(currentPlayerIndex, 1)[0];
+                playersOrdered.push(userPlayer);
+            }
+            
+            // Position players around oval table
+            const numPlayers = playersOrdered.length;
+            const tableWidth = 600;
+            const tableHeight = 400;
+            const centerX = tableWidth / 2;
+            const centerY = tableHeight / 2;
+            const radiusX = 200;
+            const radiusY = 130;
+            
+            // Get current turn index (from original array)
+            const turnIndex = typeof game.turnIndex === 'number' ? game.turnIndex : 0;
+            const currentTurnClientId = players[turnIndex] ? players[turnIndex].clientId : null;
+            
+            // Separate user from other players
+            const otherPlayers = playersOrdered.filter(p => p.clientId !== clientId);
+            const userPlayer = playersOrdered.find(p => p.clientId === clientId);
+            
+            // Position other players around the top and sides (not bottom)
+            otherPlayers.forEach((player, index) => {
+                const seat = document.createElement('div');
+                seat.className = 'player-seat';
+                seat.id = 'player-seat-' + player.clientId;
+                
+                const playerName = player.name || player.clientId;
+                seat.textContent = playerName;
+                
+                // Check if this is the current turn
+                if (player.clientId === currentTurnClientId) {
+                    seat.classList.add('current-turn');
+                }
+                
+                // Check if chips were added
+                if (game.amountsAdded && typeof game.amountsAdded[player.clientId] === 'number') {
+                    const currentAmount = game.amountsAdded[player.clientId];
+                    const prevAmount = previousAmounts[player.clientId] || 0;
+                    if (currentAmount > prevAmount) {
+                        seat.classList.add('chip-added');
+                        setTimeout(() => {
+                            seat.classList.remove('chip-added');
+                        }, 600);
+                    }
+                }
+                
+                // Position around oval (top and sides only, not bottom)
+                // Distribute players across 270 degrees (from -45 to 225 degrees, skipping bottom 90 degrees)
+                const numOther = otherPlayers.length;
+                const startAngle = -Math.PI / 4; // -45 degrees
+                const endAngle = 5 * Math.PI / 4; // 225 degrees
+                const angleRange = endAngle - startAngle;
+                const angle = startAngle + (index / Math.max(1, numOther - 1)) * angleRange;
+                
+                const x = centerX + radiusX * Math.cos(angle) - 50;
+                const y = centerY + radiusY * Math.sin(angle) - 20;
+                seat.style.left = x + 'px';
+                seat.style.top = y + 'px';
+                
+                container.appendChild(seat);
+            });
+            
+            // Position user at bottom
+            if (userPlayer) {
+                const seat = document.createElement('div');
+                seat.className = 'player-seat user-seat';
+                seat.id = 'player-seat-' + userPlayer.clientId;
+                
+                const playerName = userPlayer.name || userPlayer.clientId || username;
+                seat.textContent = playerName;
+                
+                // Check if this is the current turn
+                if (userPlayer.clientId === currentTurnClientId) {
+                    seat.classList.add('current-turn');
+                }
+                
+                // Check if chips were added
+                if (game.amountsAdded && typeof game.amountsAdded[userPlayer.clientId] === 'number') {
+                    const currentAmount = game.amountsAdded[userPlayer.clientId];
+                    const prevAmount = previousAmounts[userPlayer.clientId] || 0;
+                    if (currentAmount > prevAmount) {
+                        seat.classList.add('chip-added');
+                        setTimeout(() => {
+                            seat.classList.remove('chip-added');
+                        }, 600);
+                    }
+                }
+                
+                seat.style.bottom = '20px';
+                seat.style.left = '50%';
+                seat.style.transform = 'translateX(-50%)';
+                
+                container.appendChild(seat);
+            }
+            
+            // Update previous amounts
+            if (game.amountsAdded) {
+                previousAmounts = {...game.amountsAdded};
+            }
+        }
+
         // render player's private cards into cardsOverlay
         function renderCards(cards){
             const container = document.getElementById('cardsOverlay');
@@ -734,21 +1352,26 @@
                 const isRed = suitChar === 'H' || suitChar === 'D';
 
                 const d = document.createElement('div');
-                d.style.minWidth = '60px';
-                d.style.height = '90px';
-                d.style.border = '1px solid #333';
-                d.style.borderRadius = '8px';
+                d.style.minWidth = '70px';
+                d.style.width = '70px';
+                d.style.height = '100px';
+                d.style.border = '2px solid #333';
+                d.style.borderRadius = '10px';
                 d.style.display = 'flex';
                 d.style.flexDirection = 'column';
-                d.style.padding = '6px';
-                d.style.background = '#fff';
-                d.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
-                d.style.color = isRed ? '#c00' : '#000';
-                d.style.fontFamily = 'sans-serif';
+                d.style.padding = '8px';
+                d.style.background = 'linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%)';
+                d.style.boxShadow = '0 6px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.8)';
+                d.style.color = isRed ? '#d32f2f' : '#212121';
+                d.style.fontFamily = 'Georgia, serif';
+                d.style.transition = 'transform 0.2s, box-shadow 0.2s';
+                d.style.cursor = 'default';
 
                 const top = document.createElement('div');
-                top.style.fontSize = '14px';
+                top.style.fontSize = '16px';
+                top.style.fontWeight = '700';
                 top.style.alignSelf = 'flex-start';
+                top.style.lineHeight = '1';
                 top.textContent = rank;
 
                 const middle = document.createElement('div');
@@ -756,12 +1379,16 @@
                 middle.style.display = 'flex';
                 middle.style.alignItems = 'center';
                 middle.style.justifyContent = 'center';
-                middle.style.fontSize = '28px';
+                middle.style.fontSize = '36px';
+                middle.style.lineHeight = '1';
                 middle.textContent = suitSym;
 
                 const bottom = document.createElement('div');
-                bottom.style.fontSize = '12px';
+                bottom.style.fontSize = '16px';
+                bottom.style.fontWeight = '700';
                 bottom.style.alignSelf = 'flex-end';
+                bottom.style.lineHeight = '1';
+                bottom.style.transform = 'rotate(180deg)';
                 bottom.textContent = rank;
 
                 d.appendChild(top);
@@ -790,12 +1417,15 @@
             lbl.id = 'communityLabel';
             lbl.textContent = '';
             lbl.style.fontWeight = '700';
-            lbl.style.marginBottom = '6px';
+            lbl.style.fontSize = '20px';
+            lbl.style.marginBottom = '8px';
+            lbl.style.color = '#fff';
+            lbl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
             c.appendChild(lbl);
             const row = document.createElement('div');
             row.id = 'communityRow';
             row.style.display = 'flex';
-            row.style.gap = '8px';
+            row.style.gap = '12px';
             c.appendChild(row);
             document.body.appendChild(c);
         }
@@ -815,13 +1445,14 @@
             c.style.display = 'flex';
             c.style.flexDirection = 'column';
             c.style.alignItems = 'center';
-            c.style.gap = '6px';
+            c.style.gap = '8px';
             c.style.zIndex = '1200';
-            c.style.background = 'rgba(255,255,255,0.95)';
-            c.style.padding = '8px 12px';
-            c.style.borderRadius = '8px';
-            c.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
-
+            c.style.background = 'rgba(255,255,255,0.98)';
+            c.style.padding = '12px 16px';
+            c.style.borderRadius = '12px';
+            c.style.border = '2px solid rgba(212,175,55,0.3)';
+            c.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+            // (Player list moved to a separate middle-left sidebar)
             const icon = document.createElement('div');
             icon.textContent = 'Your chips';
             icon.style.fontSize = '12px';
@@ -846,6 +1477,58 @@
             document.body.appendChild(c);
         }
 
+        // Sidebar for player list (middle-left, above chips widget)
+        function ensurePlayerListSidebar(){
+            if (document.getElementById('playerListSidebar')) return;
+            const s = document.createElement('div');
+            s.id = 'playerListSidebar';
+            s.style.position = 'fixed';
+            s.style.left = '20px';
+            s.style.top = '50%';
+            s.style.transform = 'translateY(-50%)';
+            s.style.zIndex = '1200';
+            s.style.background = 'rgba(255,255,255,0.98)';
+            s.style.padding = '12px 16px';
+            s.style.borderRadius = '12px';
+            s.style.border = '2px solid rgba(0,0,0,0.06)';
+            s.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+            s.style.maxHeight = '60vh';
+            s.style.overflowY = 'auto';
+            // label
+            const lbl = document.createElement('div');
+            lbl.textContent = 'Players';
+            lbl.style.fontSize = '12px';
+            lbl.style.fontWeight = '700';
+            lbl.style.color = '#0a5a2e';
+            lbl.style.marginBottom = '8px';
+            s.appendChild(lbl);
+            const list = document.createElement('div');
+            list.id = 'playerList';
+            list.style.display = 'flex';
+            list.style.flexDirection = 'column';
+            list.style.gap = '6px';
+            list.style.fontSize = '13px';
+            list.style.color = '#0a5a2e';
+            s.appendChild(list);
+            document.body.appendChild(s);
+        }
+        
+        function updatePlayerList(game) {
+            ensurePlayerListSidebar();
+            const playerList = document.getElementById('playerList');
+            if (!playerList) return;
+            
+            while(playerList.firstChild) playerList.removeChild(playerList.firstChild);
+            
+            const players = Array.isArray(game.clients) ? game.clients : [];
+            players.forEach(player => {
+                const playerItem = document.createElement('div');
+                playerItem.textContent = player.name || player.clientId;
+                playerItem.style.padding = '2px 0';
+                playerList.appendChild(playerItem);
+            });
+        }
+
         function removeYourChipsContainer(){
             const existing = document.getElementById('yourChipsWidget');
             if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
@@ -858,17 +1541,17 @@
             const d = document.createElement('div');
             d.id = 'blindNotice';
             d.style.position = 'fixed';
-            d.style.bottom = '120px';
-            d.style.left = '50%';
-            d.style.transform = 'translateX(-50%)';
-            d.style.background = 'rgba(255,240,200,0.98)';
-            d.style.color = '#222';
-            d.style.padding = '8px 12px';
-            d.style.border = '1px solid #e6b800';
-            d.style.borderRadius = '6px';
+            d.style.bottom = '20px';
+            d.style.right = '20px';
+            d.style.background = 'linear-gradient(135deg, #ffd700 0%, #ffed4e 100%)';
+            d.style.color = '#0a5a2e';
+            d.style.padding = '12px 20px';
+            d.style.border = '2px solid #ffb800';
+            d.style.borderRadius = '10px';
             d.style.fontWeight = '700';
+            d.style.fontSize = '16px';
             d.style.zIndex = '1300';
-            d.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+            d.style.boxShadow = '0 8px 24px rgba(255,184,0,0.5)';
             d.style.display = 'none';
             document.body.appendChild(d);
         }
@@ -899,6 +1582,9 @@
             const hasCards = Array.isArray(cards) && cards.length > 0;
             const showLabel = hasCards || (typeof round === 'number' && round >= 2);
             lbl.textContent = showLabel ? 'River' : '';
+            lbl.style.color = '#fff';
+            lbl.style.fontSize = '20px';
+            lbl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
             while(row.firstChild) row.removeChild(row.firstChild);
             (cards || []).forEach(code => {
                 if (!code) return;
@@ -909,21 +1595,26 @@
                 const isRed = suitChar === 'H' || suitChar === 'D';
 
                 const d = document.createElement('div');
-                d.style.minWidth = '60px';
-                d.style.height = '90px';
-                d.style.border = '1px solid #333';
-                d.style.borderRadius = '8px';
+                d.style.minWidth = '70px';
+                d.style.width = '70px';
+                d.style.height = '100px';
+                d.style.border = '2px solid #333';
+                d.style.borderRadius = '10px';
                 d.style.display = 'flex';
                 d.style.flexDirection = 'column';
-                d.style.padding = '6px';
-                d.style.background = '#fff';
-                d.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
-                d.style.color = isRed ? '#c00' : '#000';
-                d.style.fontFamily = 'sans-serif';
+                d.style.padding = '8px';
+                d.style.background = 'linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%)';
+                d.style.boxShadow = '0 6px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.8)';
+                d.style.color = isRed ? '#d32f2f' : '#212121';
+                d.style.fontFamily = 'Georgia, serif';
+                d.style.transition = 'transform 0.2s, box-shadow 0.2s';
+                d.style.cursor = 'default';
 
                 const top = document.createElement('div');
-                top.style.fontSize = '14px';
+                top.style.fontSize = '16px';
+                top.style.fontWeight = '700';
                 top.style.alignSelf = 'flex-start';
+                top.style.lineHeight = '1';
                 top.textContent = rank;
 
                 const middle = document.createElement('div');
@@ -931,12 +1622,16 @@
                 middle.style.display = 'flex';
                 middle.style.alignItems = 'center';
                 middle.style.justifyContent = 'center';
-                middle.style.fontSize = '28px';
+                middle.style.fontSize = '36px';
+                middle.style.lineHeight = '1';
                 middle.textContent = suitSym;
 
                 const bottom = document.createElement('div');
-                bottom.style.fontSize = '12px';
+                bottom.style.fontSize = '16px';
+                bottom.style.fontWeight = '700';
                 bottom.style.alignSelf = 'flex-end';
+                bottom.style.lineHeight = '1';
+                bottom.style.transform = 'rotate(180deg)';
                 bottom.textContent = rank;
 
                 d.appendChild(top);
