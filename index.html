@@ -200,7 +200,8 @@
         
         .table-pot {
             position: absolute;
-            top: 50%;
+            /* moved further down to avoid overlap */
+            top: 78%;
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 32px;
@@ -209,6 +210,61 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
             z-index: 10;
         }
+
+        /* card back / hover reveal for hole cards */
+        .card-wrapper {
+            position: relative;
+            width: 56px;
+            /* make wrapper slightly taller so back can overhang */
+            height: 86px;
+            perspective: 600px;
+        }
+        /* Showdown area styles */
+        #showdownArea {
+            pointer-events: none;
+        }
+        .showdown-player {
+            background: rgba(255,255,255,0.98);
+            padding: 8px 10px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 90px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+        .showdown-card {
+            font-size: 12px;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 6px;
+            padding: 6px;
+            background: #fff;
+        }
+        .card-face, .card-back {
+            position: absolute;
+            /* slightly larger than wrapper so back covers fully */
+            inset: -2px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.8);
+            backface-visibility: hidden;
+            transition: transform 0.16s ease, opacity 0.16s ease, visibility 0.16s;
+        }
+        .card-face { visibility: hidden; opacity: 0; z-index: 3; }
+        .card-back {
+            background: linear-gradient(135deg,#2e6b3a 0%,#1f4b2a 100%);
+            color: #fff;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            text-align: center;
+            font-size: 11px;
+            z-index: 2;
+        }
+        .card-wrapper:hover .card-face { visibility: visible; opacity: 1; z-index: 4; }
+        .card-wrapper:hover .card-back { visibility: hidden; opacity: 0; z-index: 1; }
         
         .player-seat {
             position: absolute;
@@ -226,10 +282,11 @@
         }
         
         .player-seat.current-turn {
-            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
-            border: 2px solid #ffb800;
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 4px 12px rgba(0,0,0,0.3);
-            animation: glow 2s ease-in-out infinite alternate;
+            /* highlight removed — keep same appearance as normal seats */
+            background: rgba(255,255,255,0.95);
+            border: 2px solid transparent;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: none;
         }
         
         @keyframes glow {
@@ -284,7 +341,13 @@
         let playerColor = null;
         let username = null;
         let pot = 0;
-        let ws = new WebSocket("https://server-nks4.onrender.com/ws")
+        let ws = new WebSocket("ws://localhost:9090")
+        // client-side timer state
+        let clientTimerInterval = null;
+        let clientTimerRemaining = 0;
+        let clientTimerOwner = null;
+        // latest game snapshot used by the timer interval to avoid stale closure values
+        let currentGameState = null;
         const btnCreate = document.getElementById("btnCreate");
         const btnJoin = document.getElementById("btnJoin");
         const txtGameId = document.getElementById("txtGameId");
@@ -376,6 +439,38 @@
             }
 
 
+            // 'add' from server (e.g., blinds posted) — treat as a lightweight update
+            if (response.method === "add"){
+                const game = response.game || {};
+                // update pot/value display
+                let value = null;
+                if (typeof game.value === 'number') value = game.value;
+                else if (typeof game.state === 'number') value = game.state;
+                else if (game.state && typeof game.state.value === 'number') value = game.state.value;
+                const display = document.getElementById('numberDisplay');
+                if (value !== null && value !== undefined && display) display.textContent = String(value);
+                // basic UI sync
+                const roundDisplay = document.getElementById('roundDisplay');
+                if (roundDisplay) roundDisplay.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
+                const target = typeof game.max === 'number' ? game.max : 0;
+                const maxDisplay = document.getElementById('maxDisplay'); if (maxDisplay) maxDisplay.textContent = 'Target: ' + target;
+                const myAdded = (game.amountsAdded && typeof game.amountsAdded[clientId] === 'number') ? game.amountsAdded[clientId] : 0;
+                const required = Math.max(0, target - myAdded);
+                const requiredAddDisplay = document.getElementById('requiredAddDisplay'); if (requiredAddDisplay) requiredAddDisplay.textContent = 'Minimum add: ' + (typeof game.max === 'number' ? game.max : 0);
+                const yourAddedDisplay = document.getElementById('yourAddedDisplay'); if (yourAddedDisplay) yourAddedDisplay.textContent = 'You added: ' + myAdded;
+                const vElm = document.getElementById('yourChipsValue'); if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
+                // update player tiles and timer
+                updatePlayerList(game);
+                updateTimerDisplay(game);
+                // show messages and community if in game
+                const amIInGame = Array.isArray(game.clients) && game.clients.some(c => c.clientId === clientId);
+                if (amIInGame) {
+                    ensureMessagesContainer(); if (Array.isArray(game.messages)) renderMessages(game.messages);
+                    if (game.started) updateTurnIndicator(game.currentTurnName || ''); else removeTurnIndicator();
+                    ensureCommunityContainer(); if (Array.isArray(game.community)) renderCommunity(game.community, game.round);
+                    ensureYourChipsContainer(); updatePlayerList(game);
+                }
+            }
             //update: expect a single numeric value for the game
             if (response.method === "update"){
                 const game = response.game || {};
@@ -388,9 +483,8 @@
                 console.log(game.max)
                 // update round and turn if present
                 const roundDisplay = document.getElementById('roundDisplay');
-                const turnDisplay = document.getElementById('turnDisplay');
                 if (roundDisplay) roundDisplay.textContent = 'Round: ' + (game.round || 0) + ' / ' + (game.totalRounds || 0);
-                if (turnDisplay) turnDisplay.textContent = 'Turn: ' + (game.currentTurnName || '');
+                // Turn display is handled by the persistent turn indicator below the chat
 
                 // reset local per-round added counters if round changed
                 if (typeof game.round === 'number' && prevRound !== game.round){
@@ -412,13 +506,16 @@
                 const yourChipsValue = document.getElementById('yourChipsValue');
                 const myAdded = (game.amountsAdded && typeof game.amountsAdded[clientId] === 'number') ? game.amountsAdded[clientId] : 0;
                 const required = Math.max(0, target - myAdded);
-                if (requiredAddDisplay) requiredAddDisplay.textContent = 'To add: ' + required;
+                if (requiredAddDisplay) requiredAddDisplay.textContent = 'Minimum add: ' + (typeof game.max === 'number' ? game.max : 0);
                 if (yourAddedDisplay) yourAddedDisplay.textContent = 'You added: ' + myAdded;
                 const myChips = (game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0;
                 if (yourChipsValue) yourChipsValue.textContent = String(myChips);
                 
                 // Update player list
                 updatePlayerList(game);
+                    updateTimerDisplay(game);
+                // update global turn timer display
+                updateTimerDisplay(game);
 
                 // create/show messages only if this client is in the game
                 const amIInGame = Array.isArray(game.clients) && game.clients.some(c => c.clientId === clientId);
@@ -437,6 +534,8 @@
                     // show chips widget
                     ensureYourChipsContainer();
                     updatePlayerList(game);
+                    updateTimerDisplay(game);
+                    updateTimerDisplay(game);
                     const vElm = document.getElementById('yourChipsValue');
                     if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
                     // show blind notice on start if applicable
@@ -464,6 +563,14 @@
                         }
                     } else {
                         clearBlindNotice();
+                    }
+                    // Trigger showdown animation if present and not previously shown
+                    if (game.showdown && game.showdown.players && Object.keys(game.showdown.players).length > 0) {
+                        const key = JSON.stringify(game.showdown.players);
+                        if (lastShowdownKey !== key) {
+                            lastShowdownKey = key;
+                            setTimeout(()=> startShowdownAnimation(game), 60);
+                        }
                     }
                 } else {
                     removeMessagesContainer();
@@ -507,6 +614,8 @@
                     foldBtn.disabled = !isMyTurn;
                     foldBtn.style.opacity = foldBtn.disabled ? '0.6' : '1';
                 }
+                // remember current chips snapshot for next showdown comparison
+                previousChips = Object.assign({}, game.chips || {});
             }
 
             //start: server signals that the game has started; render numeric UI
@@ -554,17 +663,10 @@
                 roundDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                 headerRow.appendChild(roundDisplay);
 
-                const turnDisplay = document.createElement('div');
-                turnDisplay.id = 'turnDisplay';
-                turnDisplay.textContent = 'Turn: ' + (game.currentTurnName || '');
-                turnDisplay.style.color = '#fff';
-                turnDisplay.style.fontWeight = '600';
-                turnDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
-                headerRow.appendChild(turnDisplay);
 
                 const requiredAddDisplay = document.createElement('div');
                 requiredAddDisplay.id = 'requiredAddDisplay';
-                requiredAddDisplay.textContent = 'To add: 0';
+                requiredAddDisplay.textContent = 'Minimum add: 0';
                 requiredAddDisplay.style.color = '#fff';
                 requiredAddDisplay.style.fontWeight = '600';
                 requiredAddDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
@@ -983,17 +1085,10 @@
                     roundDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
                     headerRow.appendChild(roundDisplay2);
 
-                    const turnDisplay2 = document.createElement('div');
-                    turnDisplay2.id = 'turnDisplay';
-                    turnDisplay2.textContent = 'Turn: ' + (game.currentTurnName || '');
-                    turnDisplay2.style.color = '#fff';
-                    turnDisplay2.style.fontWeight = '600';
-                    turnDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
-                    headerRow.appendChild(turnDisplay2);
 
                     const requiredAddDisplay2 = document.createElement('div');
                     requiredAddDisplay2.id = 'requiredAddDisplay';
-                    requiredAddDisplay2.textContent = 'To add: 0';
+                    requiredAddDisplay2.textContent = 'Minimum add: 0';
                     requiredAddDisplay2.style.color = '#fff';
                     requiredAddDisplay2.style.fontWeight = '600';
                     requiredAddDisplay2.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
@@ -1071,8 +1166,8 @@
             d.id = 'turnIndicator';
             d.style.position = 'fixed';
             d.style.right = '20px';
-            // Position below chat box: chat box is at top: 100px with maxHeight: 360px, so ends at 460px, add 10px gap
-            d.style.top = '470px';
+            // Position below chat box: move slightly further down
+            d.style.top = '540px';
             d.style.background = 'rgba(255,255,255,0.98)';
             d.style.color = '#0a5a2e';
             d.style.padding = '10px 16px';
@@ -1088,12 +1183,145 @@
             document.body.appendChild(d);
         }
 
+        // Timer visible to all players (top-left)
+        function ensureTimerContainer(){
+            if (document.getElementById('turnTimer')) return;
+            const t = document.createElement('div');
+            t.id = 'turnTimer';
+            t.style.position = 'fixed';
+            t.style.left = '16px';
+            t.style.top = '16px';
+            t.style.background = 'rgba(255,255,255,0.98)';
+            t.style.color = '#0a5a2e';
+            t.style.padding = '10px 14px';
+            t.style.borderRadius = '10px';
+            t.style.fontWeight = '800';
+            t.style.fontSize = '18px';
+            t.style.zIndex = '2000';
+            t.style.boxShadow = '0 6px 18px rgba(0,0,0,0.25)';
+            t.textContent = '';
+            document.body.appendChild(t);
+        }
+
+        function updateTimerDisplay(game){
+            if (!game) return;
+            ensureTimerContainer();
+            const t = document.getElementById('turnTimer');
+            if (!t) return;
+            const rem = typeof game.turnTimerRemaining === 'number' ? game.turnTimerRemaining : 0;
+            const owner = game.turnTimerOwner || null;
+            // sync client-side countdown to server value
+            // keep a reference to latest game so the interval always reads current turn name
+            currentGameState = game;
+            if (rem > 0 && owner) {
+                clientTimerRemaining = rem;
+                clientTimerOwner = owner;
+                // reset auto-fold flag whenever a new timer starts
+                clientDidAutoFold = false;
+                // start interval if not running
+                if (!clientTimerInterval) {
+                    clientTimerInterval = setInterval(() => {
+                        clientTimerRemaining = Math.max(0, clientTimerRemaining - 1);
+                        // always use the latest owner and latest game snapshot
+                        renderClientTimer(clientTimerRemaining, clientTimerOwner, currentGameState);
+                        if (clientTimerRemaining <= 0) {
+                            clearInterval(clientTimerInterval);
+                            clientTimerInterval = null;
+                            clientTimerOwner = null;
+                        }
+                    }, 1000);
+                }
+                renderClientTimer(clientTimerRemaining, clientTimerOwner, currentGameState);
+            } else {
+                clientTimerRemaining = 0;
+                clientTimerOwner = null;
+                currentGameState = game;
+                if (clientTimerInterval) { clearInterval(clientTimerInterval); clientTimerInterval = null; }
+                t.textContent = '';
+            }
+        }
+
+        let clientDidAutoFold = false;
+        function renderClientTimer(remaining, owner, game){
+            const t = document.getElementById('turnTimer');
+            if (!t) return;
+            const ownerName = (game && Array.isArray(game.clients)) ? (game.clients.find(p => p.clientId === owner)) : null;
+            const displayName = ownerName && ownerName.name ? ownerName.name : (owner || '-');
+            const turnName = (game && game.turn) ? game.turn : displayName;
+            t.textContent = remaining > 0 ? `${turnName} — ${remaining}s` : '';
+            // no yellow border — keep timer neutral
+            t.style.border = '2px solid transparent';
+            // if timer expired and this client was the owner, send fold once
+            if (remaining <= 0 && owner === clientId && !clientDidAutoFold) {
+                clientDidAutoFold = true;
+                try {
+                    const payLoad = { method: 'fold', clientId: clientId, gameId: game && game.id ? game.id : gameId };
+                    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payLoad));
+                } catch (e) { console.error('auto-fold send error', e); }
+            }
+            // highlight entire screen and show message only when the game is started and it's your turn
+            // additionally require the owner's displayed name to match this client's username
+            if (game && game.started && owner === clientId && remaining > 0 && displayName === username) {
+                showTurnHighlight();
+            } else {
+                hideTurnHighlight();
+            }
+        }
+
+        function ensureTurnHighlight(){
+            if (document.getElementById('turnHighlight')) return;
+            const overlay = document.createElement('div');
+            overlay.id = 'turnHighlight';
+            overlay.style.position = 'fixed';
+            overlay.style.inset = '0';
+            overlay.style.pointerEvents = 'none';
+            overlay.style.zIndex = '3000';
+            overlay.style.display = 'none';
+            // border box
+            overlay.style.boxSizing = 'border-box';
+            // overlay border removed so no yellow frame appears
+            overlay.style.border = 'none';
+            // message container
+            const msg = document.createElement('div');
+            msg.id = 'turnHighlightMsg';
+            msg.style.position = 'absolute';
+            // place the small turn message in the top-right corner of the overlay
+            msg.style.top = '16px';
+            msg.style.right = '16px';
+            msg.style.transform = 'none';
+            msg.style.background = 'rgba(255,255,255,0.95)';
+            msg.style.color = '#0a5a2e';
+            msg.style.padding = '12px 20px';
+            msg.style.borderRadius = '10px';
+            msg.style.fontWeight = '800';
+            msg.style.fontSize = '20px';
+            msg.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)';
+            // remove the visible turn message
+            msg.textContent = '';
+            overlay.appendChild(msg);
+            document.body.appendChild(overlay);
+        }
+
+        function showTurnHighlight(){
+            ensureTurnHighlight();
+            const overlay = document.getElementById('turnHighlight');
+            if (!overlay) return;
+            overlay.style.display = 'block';
+        }
+
+        function hideTurnHighlight(){
+            const overlay = document.getElementById('turnHighlight');
+            if (!overlay) return;
+            overlay.style.display = 'none';
+        }
+
         function updateTurnIndicator(turnName){
             ensureTurnIndicator();
             const d = document.getElementById('turnIndicator');
-            if (d) {
-                d.textContent = 'Turn: ' + (turnName || '-');
-            }
+            if (!d) return;
+            // Show the turn indicator to everyone (textual). Do not trigger the full-screen highlight.
+            d.textContent = 'Turn: ' + (turnName || '-');
+            d.style.display = 'block';
         }
 
         function removeTurnIndicator(){
@@ -1162,6 +1390,9 @@
 
         // Track previous amounts to detect chip additions
         let previousAmounts = {};
+        // Track previous chips to detect showdown winners
+        let previousChips = {};
+        let lastShowdownKey = null;
 
         // Render poker table with players around it
         function renderPokerTable(game) {
@@ -1181,46 +1412,6 @@
             potDisplay.className = 'table-pot';
             const potValue = typeof game.pot === 'number' ? game.pot : (typeof game.value === 'number' ? game.value : 0);
             potDisplay.textContent = 'Pot: ' + potValue;
-            // Totals above pot: total added and total required
-            const totals = document.createElement('div');
-            totals.id = 'potTotals';
-            totals.style.position = 'absolute';
-            totals.style.left = '50%';
-            totals.style.top = '40%';
-            totals.style.transform = 'translate(-50%, -100%)';
-            totals.style.display = 'flex';
-            totals.style.flexDirection = 'column';
-            totals.style.alignItems = 'center';
-            totals.style.gap = '6px';
-            totals.style.zIndex = '15';
-
-            const totalAddedDisplay = document.createElement('div');
-            totalAddedDisplay.id = 'totalAddedDisplay';
-            totalAddedDisplay.style.color = '#fff';
-            totalAddedDisplay.style.fontWeight = '700';
-            totalAddedDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
-
-            const totalRequiredDisplay = document.createElement('div');
-            totalRequiredDisplay.id = 'totalRequiredDisplay';
-            totalRequiredDisplay.style.color = '#ffd700';
-            totalRequiredDisplay.style.fontWeight = '700';
-            totalRequiredDisplay.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
-
-            // compute totals
-            const amounts = game.amountsAdded || {};
-            let totalAdded = 0;
-            Object.keys(amounts).forEach(k => { if (typeof amounts[k] === 'number') totalAdded += amounts[k]; });
-            const target = typeof game.max === 'number' ? game.max : 0;
-            const playersCount = Array.isArray(game.clients) ? game.clients.length : 0;
-            const totalRequired = Math.max(0, target * playersCount - totalAdded);
-
-            totalAddedDisplay.textContent = 'Total added: ' + totalAdded;
-            totalRequiredDisplay.textContent = 'Total required: ' + totalRequired;
-
-            totals.appendChild(totalAddedDisplay);
-            totals.appendChild(totalRequiredDisplay);
-            container.appendChild(totals);
-
             container.appendChild(potDisplay);
             
             // Get players list
@@ -1289,8 +1480,8 @@
                 const angleRange = endAngle - startAngle;
                 const angle = startAngle + (index / Math.max(1, numOther - 1)) * angleRange;
                 
-                const x = centerX + radiusX * Math.cos(angle) - 50;
-                const y = centerY + radiusY * Math.sin(angle) - 20;
+                const x = centerX + radiusX * Math.cos(angle) - 44; // adjust for smaller tile
+                const y = centerY + radiusY * Math.sin(angle) - 18;
                 seat.style.left = x + 'px';
                 seat.style.top = y + 'px';
                 
@@ -1323,7 +1514,7 @@
                     }
                 }
                 
-                seat.style.bottom = '20px';
+                seat.style.bottom = '22px';
                 seat.style.left = '50%';
                 seat.style.transform = 'translateX(-50%)';
                 
@@ -1334,6 +1525,106 @@
             if (game.amountsAdded) {
                 previousAmounts = {...game.amountsAdded};
             }
+        }
+
+        // Start a showdown animation: fade out pot, show each player's name + cards in center,
+        // then highlight winner(s) after 2s, then restore pot.
+        function startShowdownAnimation(game){
+            if (!game || !game.showdown || !game.showdown.players) return;
+            const showdownPlayers = game.showdown.players;
+            const potElem = document.getElementById('numberDisplay') || document.querySelector('.table-pot');
+            if (!potElem) return;
+            // fade out pot
+            potElem.style.transition = 'opacity 400ms ease';
+            potElem.style.opacity = '0.12';
+
+            // create showdown area centered over pot
+            const rect = potElem.getBoundingClientRect();
+            const area = document.createElement('div');
+            area.id = 'showdownArea';
+            area.style.position = 'fixed';
+            area.style.left = (rect.left + rect.width/2) + 'px';
+            area.style.top = (rect.top + rect.height/2) + 'px';
+            area.style.transform = 'translate(-50%, -50%)';
+            area.style.display = 'flex';
+            area.style.gap = '18px';
+            area.style.zIndex = '2500';
+            area.style.alignItems = 'flex-start';
+            document.body.appendChild(area);
+
+            // create player blocks
+            const ids = Object.keys(showdownPlayers);
+            ids.forEach(id => {
+                const p = showdownPlayers[id];
+                const block = document.createElement('div');
+                block.className = 'showdown-player';
+                block.dataset.clientId = id;
+                // name marker
+                const name = document.createElement('div');
+                name.className = 'showdown-name';
+                // find display name from game.clients
+                const clientObj = (game.clients||[]).find(c=>c.clientId===id);
+                name.textContent = (clientObj && clientObj.name) ? clientObj.name : id;
+                name.style.fontWeight = '700';
+                name.style.marginBottom = '6px';
+                name.style.textAlign = 'center';
+                // card container
+                const cards = document.createElement('div');
+                cards.style.display = 'flex';
+                cards.style.gap = '6px';
+                const priv = Array.isArray(p.private) ? p.private : [];
+                priv.forEach(code => {
+                    const c = document.createElement('div');
+                    c.className = 'showdown-card';
+                    c.style.minWidth = '44px';
+                    c.style.height = '64px';
+                    c.style.borderRadius = '6px';
+                    c.style.background = '#fff';
+                    c.style.color = '#0a5a2e';
+                    c.style.display = 'flex';
+                    c.style.alignItems = 'center';
+                    c.style.justifyContent = 'center';
+                    c.style.fontWeight = '700';
+                    c.textContent = code || '';
+                    cards.appendChild(c);
+                });
+                block.appendChild(name);
+                block.appendChild(cards);
+                area.appendChild(block);
+            });
+
+            // capture previous chips snapshot now
+            const prevSnapshot = Object.assign({}, previousChips || {});
+            // after 5s, determine winner(s) by chip delta and enlarge their cards
+            setTimeout(()=>{
+                const deltas = {};
+                ids.forEach(id => {
+                    const now = (game.chips && typeof game.chips[id] === 'number') ? game.chips[id] : 0;
+                    const prev = (prevSnapshot && typeof prevSnapshot[id] === 'number') ? prevSnapshot[id] : 0;
+                    deltas[id] = now - prev;
+                });
+                // find max delta
+                let maxDelta = -Infinity;
+                ids.forEach(id => { if (deltas[id] > maxDelta) maxDelta = deltas[id]; });
+                const winners = ids.filter(id => deltas[id] === maxDelta && maxDelta > 0);
+                // enlarge winner cards after 5s
+                ids.forEach(id => {
+                    const block = area.querySelector('.showdown-player[data-client-id="'+id+'"]');
+                    if (!block) return;
+                    if (winners.includes(id)) {
+                        // enlarge each card inside the winner block
+                        const cards = block.querySelectorAll('.showdown-card');
+                        cards.forEach(c => { c.style.transition = 'transform 300ms ease'; c.style.transform = 'scale(1.25)'; });
+                        const nameEl = block.querySelector('.showdown-name'); if (nameEl) nameEl.style.fontSize = '18px';
+                    }
+                });
+            }, 5000);
+            // cleanup after 13s: remove showdown and restore pot, update previousChips
+            setTimeout(()=>{
+                try { if (area && area.parentNode) area.parentNode.removeChild(area); } catch(e){}
+                potElem.style.opacity = '1';
+                previousChips = Object.assign({}, game.chips || {});
+            }, 13000);
         }
 
         // render player's private cards into cardsOverlay
@@ -1351,50 +1642,50 @@
                 const suitSym = suitMap[suitChar] || suitChar;
                 const isRed = suitChar === 'H' || suitChar === 'D';
 
-                const d = document.createElement('div');
-                d.style.minWidth = '70px';
-                d.style.width = '70px';
-                d.style.height = '100px';
-                d.style.border = '2px solid #333';
-                d.style.borderRadius = '10px';
-                d.style.display = 'flex';
-                d.style.flexDirection = 'column';
-                d.style.padding = '8px';
-                d.style.background = 'linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%)';
-                d.style.boxShadow = '0 6px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.8)';
-                d.style.color = isRed ? '#d32f2f' : '#212121';
-                d.style.fontFamily = 'Georgia, serif';
-                d.style.transition = 'transform 0.2s, box-shadow 0.2s';
-                d.style.cursor = 'default';
+                // wrapper for hover-to-reveal
+                const wrapper = document.createElement('div');
+                wrapper.className = 'card-wrapper';
+                wrapper.style.margin = '0 6px';
 
+                // face (hidden until hover) - smaller sizes
+                const face = document.createElement('div');
+                face.className = 'card-face';
+                face.style.background = 'linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%)';
+                face.style.color = isRed ? '#d32f2f' : '#212121';
+                face.style.fontFamily = 'Georgia, serif';
                 const top = document.createElement('div');
-                top.style.fontSize = '16px';
+                top.style.fontSize = '12px';
                 top.style.fontWeight = '700';
                 top.style.alignSelf = 'flex-start';
                 top.style.lineHeight = '1';
                 top.textContent = rank;
-
                 const middle = document.createElement('div');
                 middle.style.flex = '1';
                 middle.style.display = 'flex';
                 middle.style.alignItems = 'center';
                 middle.style.justifyContent = 'center';
-                middle.style.fontSize = '36px';
+                middle.style.fontSize = '26px';
                 middle.style.lineHeight = '1';
                 middle.textContent = suitSym;
-
                 const bottom = document.createElement('div');
-                bottom.style.fontSize = '16px';
+                bottom.style.fontSize = '12px';
                 bottom.style.fontWeight = '700';
                 bottom.style.alignSelf = 'flex-end';
                 bottom.style.lineHeight = '1';
                 bottom.style.transform = 'rotate(180deg)';
                 bottom.textContent = rank;
+                face.appendChild(top);
+                face.appendChild(middle);
+                face.appendChild(bottom);
 
-                d.appendChild(top);
-                d.appendChild(middle);
-                d.appendChild(bottom);
-                cardsRow.appendChild(d);
+                // back (visible by default) with hover hint
+                const back = document.createElement('div');
+                back.className = 'card-back';
+                back.textContent = 'hover to reveal';
+
+                wrapper.appendChild(face);
+                wrapper.appendChild(back);
+                cardsRow.appendChild(wrapper);
             })
         }
 
@@ -1404,7 +1695,9 @@
             const c = document.createElement('div');
             c.id = 'communityOverlay';
             c.style.position = 'fixed';
-            c.style.top = '42%';
+            // position the community (river) reliably above the player's cards
+            // move it up by about 1/8th of the viewport height so it sits between pot and your cards
+            c.style.bottom = 'calc(160px + 12.5vh)';
             c.style.left = '50%';
             c.style.transform = 'translateX(-50%)';
             c.style.display = 'flex';
@@ -1425,7 +1718,8 @@
             const row = document.createElement('div');
             row.id = 'communityRow';
             row.style.display = 'flex';
-            row.style.gap = '12px';
+            row.style.gap = '10px';
+            row.style.marginTop = '6px';
             c.appendChild(row);
             document.body.appendChild(c);
         }
@@ -1452,7 +1746,8 @@
             c.style.borderRadius = '12px';
             c.style.border = '2px solid rgba(212,175,55,0.3)';
             c.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-            // (Player list moved to a separate middle-left sidebar)
+
+
             const icon = document.createElement('div');
             icon.textContent = 'Your chips';
             icon.style.fontSize = '12px';
@@ -1460,7 +1755,7 @@
             icon.style.display = 'flex';
             icon.style.alignItems = 'center';
             icon.style.gap = '6px';
-            const coin = document.createElement('span');
+                const coin = document.createElement('span');
             coin.textContent = '🪙';
             coin.style.fontSize = '14px';
             icon.insertBefore(coin, icon.firstChild);
@@ -1476,57 +1771,121 @@
             c.appendChild(val);
             document.body.appendChild(c);
         }
-
-        // Sidebar for player list (middle-left, above chips widget)
-        function ensurePlayerListSidebar(){
-            if (document.getElementById('playerListSidebar')) return;
-            const s = document.createElement('div');
-            s.id = 'playerListSidebar';
-            s.style.position = 'fixed';
-            s.style.left = '20px';
-            s.style.top = '50%';
-            s.style.transform = 'translateY(-50%)';
-            s.style.zIndex = '1200';
-            s.style.background = 'rgba(255,255,255,0.98)';
-            s.style.padding = '12px 16px';
-            s.style.borderRadius = '12px';
-            s.style.border = '2px solid rgba(0,0,0,0.06)';
-            s.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-            s.style.maxHeight = '60vh';
-            s.style.overflowY = 'auto';
-            // label
-            const lbl = document.createElement('div');
-            lbl.textContent = 'Players';
-            lbl.style.fontSize = '12px';
-            lbl.style.fontWeight = '700';
-            lbl.style.color = '#0a5a2e';
-            lbl.style.marginBottom = '8px';
-            s.appendChild(lbl);
-            const list = document.createElement('div');
-            list.id = 'playerList';
-            list.style.display = 'flex';
-            list.style.flexDirection = 'column';
-            list.style.gap = '6px';
-            list.style.fontSize = '13px';
-            list.style.color = '#0a5a2e';
-            s.appendChild(list);
-            document.body.appendChild(s);
-        }
         
         function updatePlayerList(game) {
-            ensurePlayerListSidebar();
-            const playerList = document.getElementById('playerList');
-            if (!playerList) return;
-            
-            while(playerList.firstChild) playerList.removeChild(playerList.firstChild);
-            
+            ensureTopPlayerBar();
+            const topBar = document.getElementById('topPlayerBar');
+            if (!topBar) return;
+            while(topBar.firstChild) topBar.removeChild(topBar.firstChild);
             const players = Array.isArray(game.clients) ? game.clients : [];
+            const turnIndex = typeof game.turnIndex === 'number' ? game.turnIndex : 0;
+            const currentTurnClientId = (Array.isArray(game.clients) && game.clients[turnIndex]) ? game.clients[turnIndex].clientId : null;
             players.forEach(player => {
-                const playerItem = document.createElement('div');
-                playerItem.textContent = player.name || player.clientId;
-                playerItem.style.padding = '2px 0';
-                playerList.appendChild(playerItem);
+                const tile = document.createElement('div');
+                tile.style.width = '88px';
+                tile.style.height = '88px';
+                tile.style.background = 'rgba(255,255,255,0.95)';
+                tile.style.borderRadius = '8px';
+                // default: no visible border
+                tile.style.border = '2px solid transparent';
+                tile.style.display = 'flex';
+                tile.style.flexDirection = 'column';
+                tile.style.alignItems = 'center';
+                tile.style.justifyContent = 'center';
+                tile.style.margin = '4px';
+                tile.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+                tile.style.fontWeight = '700';
+                tile.style.color = '#0a5a2e';
+                tile.style.textAlign = 'center';
+                tile.id = 'player-tile-' + player.clientId;
+
+                const nameDiv = document.createElement('div');
+                nameDiv.textContent = player.name || player.clientId;
+                nameDiv.style.fontSize = '12px';
+                nameDiv.style.marginBottom = '6px';
+                nameDiv.style.overflow = 'hidden';
+                nameDiv.style.textOverflow = 'ellipsis';
+                nameDiv.style.whiteSpace = 'nowrap';
+                nameDiv.style.width = '72px';
+
+                const chipsDiv = document.createElement('div');
+                const chipVal = (game.chips && typeof game.chips[player.clientId] === 'number') ? game.chips[player.clientId] : 0;
+                chipsDiv.textContent = chipVal + ' 🪙';
+                chipsDiv.style.fontSize = '12px';
+                chipsDiv.style.marginTop = '4px';
+                chipsDiv.style.color = '#555';
+
+                // If this is a showdown, render small private cards and best-hand text inside the tile
+                const sd = (game.showdown && game.showdown.players && game.showdown.players[player.clientId]) ? game.showdown.players[player.clientId] : null;
+                if (sd) {
+                    const bestDiv = document.createElement('div');
+                    bestDiv.textContent = sd.bestText || '';
+                    bestDiv.style.fontSize = '11px';
+                    bestDiv.style.fontWeight = '700';
+                    bestDiv.style.marginTop = '4px';
+                    bestDiv.style.color = '#222';
+                    bestDiv.style.width = '80%';
+                    bestDiv.style.whiteSpace = 'nowrap';
+                    bestDiv.style.overflow = 'hidden';
+                    bestDiv.style.textOverflow = 'ellipsis';
+
+                    const miniRow = document.createElement('div');
+                    miniRow.style.display = 'flex';
+                    miniRow.style.gap = '4px';
+                    miniRow.style.marginTop = '6px';
+                    (sd.private || []).forEach(code => {
+                        if (!code) return;
+                        const suitChar = code.slice(-1).toUpperCase();
+                        const rank = code.slice(0, -1);
+                        const suitMap = { 'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣' };
+                        const suitSym = suitMap[suitChar] || suitChar;
+                        const mini = document.createElement('div');
+                        mini.style.width = '34px';
+                        mini.style.height = '50px';
+                        mini.style.border = '1px solid #333';
+                        mini.style.borderRadius = '6px';
+                        mini.style.display = 'flex';
+                        mini.style.flexDirection = 'column';
+                        mini.style.alignItems = 'center';
+                        mini.style.justifyContent = 'center';
+                        mini.style.fontSize = '12px';
+                        mini.style.background = '#fff';
+                        mini.style.color = (suitChar === 'H' || suitChar === 'D') ? '#d32f2f' : '#111';
+                        mini.textContent = rank + suitSym;
+                        miniRow.appendChild(mini);
+                    });
+
+                    tile.appendChild(bestDiv);
+                    tile.appendChild(miniRow);
+                }
+
+                tile.appendChild(nameDiv);
+                tile.appendChild(chipsDiv);
+
+                // Do not show yellow border highlight on player tiles. Keep borders transparent for all tiles.
+                tile.style.border = '2px solid transparent';
+
+                topBar.appendChild(tile);
             });
+        }
+
+        function ensureTopPlayerBar(){
+            if (document.getElementById('topPlayerBar')) return;
+            const bar = document.createElement('div');
+            bar.id = 'topPlayerBar';
+            bar.style.position = 'fixed';
+            bar.style.top = '8px';
+            bar.style.left = '50%';
+            bar.style.transform = 'translateX(-50%)';
+            bar.style.display = 'flex';
+            bar.style.flexDirection = 'row';
+            bar.style.alignItems = 'center';
+            bar.style.justifyContent = 'center';
+            bar.style.gap = '8px';
+            bar.style.zIndex = '1400';
+            bar.style.padding = '6px 8px';
+            bar.style.background = 'transparent';
+            document.body.appendChild(bar);
         }
 
         function removeYourChipsContainer(){
@@ -1595,23 +1954,24 @@
                 const isRed = suitChar === 'H' || suitChar === 'D';
 
                 const d = document.createElement('div');
-                d.style.minWidth = '70px';
-                d.style.width = '70px';
-                d.style.height = '100px';
-                d.style.border = '2px solid #333';
-                d.style.borderRadius = '10px';
+                // smaller river card sizes
+                d.style.minWidth = '56px';
+                d.style.width = '56px';
+                d.style.height = '86px';
+                d.style.border = '1px solid #333';
+                d.style.borderRadius = '8px';
                 d.style.display = 'flex';
                 d.style.flexDirection = 'column';
-                d.style.padding = '8px';
+                d.style.padding = '6px';
                 d.style.background = 'linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%)';
-                d.style.boxShadow = '0 6px 16px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.8)';
+                d.style.boxShadow = '0 6px 12px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.8)';
                 d.style.color = isRed ? '#d32f2f' : '#212121';
                 d.style.fontFamily = 'Georgia, serif';
-                d.style.transition = 'transform 0.2s, box-shadow 0.2s';
+                d.style.transition = 'transform 0.16s, box-shadow 0.16s';
                 d.style.cursor = 'default';
 
                 const top = document.createElement('div');
-                top.style.fontSize = '16px';
+                top.style.fontSize = '12px';
                 top.style.fontWeight = '700';
                 top.style.alignSelf = 'flex-start';
                 top.style.lineHeight = '1';
@@ -1622,12 +1982,12 @@
                 middle.style.display = 'flex';
                 middle.style.alignItems = 'center';
                 middle.style.justifyContent = 'center';
-                middle.style.fontSize = '36px';
+                middle.style.fontSize = '26px';
                 middle.style.lineHeight = '1';
                 middle.textContent = suitSym;
 
                 const bottom = document.createElement('div');
-                bottom.style.fontSize = '16px';
+                bottom.style.fontSize = '12px';
                 bottom.style.fontWeight = '700';
                 bottom.style.alignSelf = 'flex-end';
                 bottom.style.lineHeight = '1';
