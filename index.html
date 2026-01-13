@@ -370,6 +370,10 @@
                 // minor focus management
                 const input = target.querySelector('input');
                 if (input) input.focus();
+                // if switching to lobby, remove any game-specific UI so only lobby controls remain
+                if (id === 'lobbyScreen') {
+                    try { removeAllGameGraphics(); } catch (e) { console.error('cleanup on lobby switch failed', e); }
+                }
             }
         }
     
@@ -438,6 +442,17 @@
                 return;
             }
 
+            // left: server confirms this client has left the game
+            if (response.method === 'left'){
+                try { removeAllGameGraphics(); } catch(e){}
+                try { removeLeaveButton(); } catch(e){}
+                gameId = null;
+                amountAdded = 0;
+                prevRound = null;
+                showScreen('lobbyScreen');
+                return;
+            }
+
 
             // 'add' from server (e.g., blinds posted) — treat as a lightweight update
             if (response.method === "add"){
@@ -469,6 +484,7 @@
                     if (game.started) updateTurnIndicator(game.currentTurnName || ''); else removeTurnIndicator();
                     ensureCommunityContainer(); if (Array.isArray(game.community)) renderCommunity(game.community, game.round);
                     ensureYourChipsContainer(); updatePlayerList(game);
+                    ensureLeaveButton();
                 }
             }
             //update: expect a single numeric value for the game
@@ -536,6 +552,7 @@
                     updatePlayerList(game);
                     updateTimerDisplay(game);
                     updateTimerDisplay(game);
+                    ensureLeaveButton();
                     const vElm = document.getElementById('yourChipsValue');
                     if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
                     // show blind notice on start if applicable
@@ -577,6 +594,7 @@
                     removeTurnIndicator();
                     removeCommunityContainer();
                     removeYourChipsContainer();
+                    removeLeaveButton();
                 }
 
                 // enable/disable inputs based on turn and gray them out
@@ -841,9 +859,11 @@
                     if (vElm) vElm.textContent = String((game.chips && typeof game.chips[clientId] === 'number') ? game.chips[clientId] : 0);
                     amountAdded = 0;
                     prevRound = game.round;
+                    ensureLeaveButton();
                 } else {
                     removeMessagesContainer();
                     removeYourChipsContainer();
+                    removeLeaveButton();
                 }
             }
 
@@ -1893,6 +1913,32 @@
             if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
         }
 
+        // remove all non-lobby game graphics (used when leaving a game)
+        function removeAllGameGraphics(){
+            // clear main board
+            const board = document.getElementById('divBoard');
+            if (board) { while(board.firstChild) board.removeChild(board.firstChild); }
+            // clear players panel (removes 'current game code' text)
+            const dp = document.getElementById('divPlayers'); if (dp) { while(dp.firstChild) dp.removeChild(dp.firstChild); }
+            // top player bar
+            const top = document.getElementById('topPlayerBar'); if (top && top.parentNode) top.parentNode.removeChild(top);
+            // messages, chips, community, controls, cards, turn indicator
+            try { removeMessagesContainer(); } catch(e){}
+            try { removeYourChipsContainer(); } catch(e){}
+            try { removeCommunityContainer(); } catch(e){}
+            try { removeControlsOverlay(); } catch(e){}
+            try { removeCardsOverlay(); } catch(e){}
+            try { removeTurnIndicator(); } catch(e){}
+            try { removeLeaveButton(); } catch(e){}
+            // timers and blind notices
+            const tt = document.getElementById('turnTimer'); if (tt && tt.parentNode) tt.parentNode.removeChild(tt);
+            const blind = document.getElementById('blindNotice'); if (blind && blind.parentNode) blind.parentNode.removeChild(blind);
+            // misc displays created during game
+            ['numberDisplay','roundDisplay','requiredAddDisplay','yourAddedDisplay','maxDisplay','gameCodeDisplay','waitingForHost','startGameButton'].forEach(id => {
+                const el = document.getElementById(id); if (el && el.parentNode) el.parentNode.removeChild(el);
+            });
+        }
+
         // blind notice (shows "Small Blind" / "Big Blind" to the local blind player)
         let _blindNoticeTimeout = null;
         function ensureBlindNotice(){
@@ -1915,93 +1961,47 @@
             document.body.appendChild(d);
         }
 
+        // Leave button (allows local player to exit the game)
+        function ensureLeaveButton(){
+            if (document.getElementById('leaveBtn')) return;
+            const b = document.createElement('button');
+            b.id = 'leaveBtn';
+            b.textContent = 'Leave Game';
+            b.style.position = 'fixed';
+            b.style.top = '50%';
+            b.style.left = '20px';
+            b.style.transform = 'translateY(-50%)';
+            b.style.zIndex = '1200';
+            b.style.padding = '8px 12px';
+            b.style.background = 'rgba(255,255,255,0.95)';
+            b.style.border = '2px solid rgba(0,0,0,0.08)';
+            b.style.borderRadius = '8px';
+            b.style.fontWeight = '700';
+            b.style.boxShadow = '0 6px 16px rgba(0,0,0,0.12)';
+            b.style.color = '#000';
+            b.addEventListener('click', () => {
+                try {
+                    const payLoad = { method: 'leave', clientId: clientId, gameId: gameId };
+                    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payLoad));
+                } catch (e) { console.error('Leave send failed', e); }
+                // immediate local cleanup and return to lobby
+                try { removeAllGameGraphics(); } catch (e) { console.error('cleanup failed', e); }
+                showScreen('lobbyScreen');
+                // clear local game state
+                gameId = null;
+            });
+            document.body.appendChild(b);
+        }
+
+        function removeLeaveButton(){
+            const existing = document.getElementById('leaveBtn');
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        }
+
         function showBlindNotice(text, timeout = 4000){
             ensureBlindNotice();
             const d = document.getElementById('blindNotice');
             if (!d) return;
             d.textContent = text;
             d.style.display = 'block';
-            if (_blindNoticeTimeout) clearTimeout(_blindNoticeTimeout);
-            if (timeout > 0) _blindNoticeTimeout = setTimeout(()=>{ d.style.display = 'none'; _blindNoticeTimeout = null; }, timeout);
-        }
-
-        function clearBlindNotice(){
-            const d = document.getElementById('blindNotice');
-            if (d) d.style.display = 'none';
-            if (_blindNoticeTimeout) { clearTimeout(_blindNoticeTimeout); _blindNoticeTimeout = null; }
-        }
-
-        function renderCommunity(cards, round){
-            const container = document.getElementById('communityOverlay');
-            if (!container) return;
-            const row = document.getElementById('communityRow');
-            const lbl = document.getElementById('communityLabel');
-            if (!row || !lbl) return;
-            // show the label only when there are community cards OR at the start of round 2+
-            const hasCards = Array.isArray(cards) && cards.length > 0;
-            const showLabel = hasCards || (typeof round === 'number' && round >= 2);
-            lbl.textContent = showLabel ? 'River' : '';
-            lbl.style.color = '#fff';
-            lbl.style.fontSize = '20px';
-            lbl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
-            while(row.firstChild) row.removeChild(row.firstChild);
-            (cards || []).forEach(code => {
-                if (!code) return;
-                const suitChar = code.slice(-1).toUpperCase();
-                const rank = code.slice(0, -1);
-                const suitMap = { 'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣' };
-                const suitSym = suitMap[suitChar] || suitChar;
-                const isRed = suitChar === 'H' || suitChar === 'D';
-
-                const d = document.createElement('div');
-                // smaller river card sizes
-                d.style.minWidth = '56px';
-                d.style.width = '56px';
-                d.style.height = '86px';
-                d.style.border = '1px solid #333';
-                d.style.borderRadius = '8px';
-                d.style.display = 'flex';
-                d.style.flexDirection = 'column';
-                d.style.padding = '6px';
-                d.style.background = 'linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%)';
-                d.style.boxShadow = '0 6px 12px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.8)';
-                d.style.color = isRed ? '#d32f2f' : '#212121';
-                d.style.fontFamily = 'Georgia, serif';
-                d.style.transition = 'transform 0.16s, box-shadow 0.16s';
-                d.style.cursor = 'default';
-
-                const top = document.createElement('div');
-                top.style.fontSize = '12px';
-                top.style.fontWeight = '700';
-                top.style.alignSelf = 'flex-start';
-                top.style.lineHeight = '1';
-                top.textContent = rank;
-
-                const middle = document.createElement('div');
-                middle.style.flex = '1';
-                middle.style.display = 'flex';
-                middle.style.alignItems = 'center';
-                middle.style.justifyContent = 'center';
-                middle.style.fontSize = '26px';
-                middle.style.lineHeight = '1';
-                middle.textContent = suitSym;
-
-                const bottom = document.createElement('div');
-                bottom.style.fontSize = '12px';
-                bottom.style.fontWeight = '700';
-                bottom.style.alignSelf = 'flex-end';
-                bottom.style.lineHeight = '1';
-                bottom.style.transform = 'rotate(180deg)';
-                bottom.textContent = rank;
-
-                d.appendChild(top);
-                d.appendChild(middle);
-                d.appendChild(bottom);
-                row.appendChild(d);
-            })
-        }
-
-        
-    </script>
-</body>
-</html>
+       
