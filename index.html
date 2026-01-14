@@ -390,7 +390,7 @@
                 "name": username
             }
 
-            ws.send(JSON.stringify(payLoad));
+            wsSend(JSON.stringify(payLoad));
 
         })
         btnSet.addEventListener("click", e => {
@@ -409,7 +409,7 @@
                 "clientId": clientId
             }
 
-            ws.send(JSON.stringify(payLoad));
+            ws(JSON.stringify(payLoad));
 
         })
 
@@ -433,7 +433,7 @@
                 "gameId": response.game.id,
                 "name": username
                 }
-                ws.send(JSON.stringify(payLoad));
+                wsSend(JSON.stringify(payLoad));
             }
             //error
             if (response.method === "error"){
@@ -757,7 +757,7 @@
                         name: username
                     };
                     amountAdded = (amountAdded || 0) + v;
-                    ws.send(JSON.stringify(payLoad));
+                    wsSend(JSON.stringify(payLoad));
                 });
 
                 const checkBtn = document.createElement('button');
@@ -771,7 +771,7 @@
                         value: 0,
                         name: username
                     };
-                    ws.send(JSON.stringify(payLoad));
+                    wsSend(JSON.stringify(payLoad));
                 });
 
                 const foldBtn = document.createElement('button');
@@ -779,7 +779,7 @@
                 foldBtn.textContent = 'Fold';
                 foldBtn.addEventListener('click', () => {
                     const payLoad = { method: 'fold', clientId: clientId, gameId: response.gameId || gameId };
-                    ws.send(JSON.stringify(payLoad));
+                    wsSend(JSON.stringify(payLoad));
                 });
 
                 controlsOverlay.appendChild(input);
@@ -939,7 +939,7 @@
                                 clientId: clientId,
                                 gameId: gameId
                             };
-                            ws.send(JSON.stringify(payLoad));
+                            wsSend(JSON.stringify(payLoad));
                         });
                         document.body.appendChild(startBtn);
                     } else {
@@ -1029,7 +1029,7 @@
                             value: v,
                             name: username
                         };
-                        ws.send(JSON.stringify(payLoad));
+                        wsSend(JSON.stringify(payLoad));
                     });
 
                     const checkBtn2 = document.createElement('button');
@@ -1037,13 +1037,13 @@
                     checkBtn2.textContent = 'Check';
                     checkBtn2.addEventListener('click', () => {
                         const payLoad = { method: 'add', clientId: clientId, gameId: gameId, value: 0, name: username };
-                        ws.send(JSON.stringify(payLoad));
+                        wsSend(JSON.stringify(payLoad));
                     });
 
                     const foldBtn2 = document.createElement('button');
                     foldBtn2.textContent = 'Fold';
                     foldBtn2.addEventListener('click', () => {
-                        ws.send(JSON.stringify({ method: 'fold', clientId: clientId, gameId: gameId }));
+                        wsSend(JSON.stringify({ method: 'fold', clientId: clientId, gameId: gameId }));
                     });
 
                     controlsOverlay2.appendChild(input2);
@@ -1276,7 +1276,7 @@
                 clientDidAutoFold = true;
                 try {
                     const payLoad = { method: 'fold', clientId: clientId, gameId: game && game.id ? game.id : gameId };
-                    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payLoad));
+                    if (ws && ws.readyState === WebSocket.OPEN) wsSend(JSON.stringify(payLoad));
                 } catch (e) { console.error('auto-fold send error', e); }
             }
             // highlight entire screen and show message only when the game is started and it's your turn
@@ -1383,7 +1383,13 @@
             if (e) e.textContent = '';
             if (errorTimeout) { clearTimeout(errorTimeout); errorTimeout = null; }
         }
-
+function wsSend(payload) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.warn("WS not ready, message dropped:", payload);
+        return;
+    }
+    wsSend(JSON.stringify(payload));
+}
         function renderMessages(messages){
             if (!messagesContainer) return;
             while(messagesContainer.firstChild) messagesContainer.removeChild(messagesContainer.firstChild);
@@ -1982,7 +1988,7 @@
             b.addEventListener('click', () => {
                 try {
                     const payLoad = { method: 'leave', clientId: clientId, gameId: gameId };
-                    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payLoad));
+                    if (ws && ws.readyState === WebSocket.OPEN) wsSend(JSON.stringify(payLoad));
                 } catch (e) { console.error('Leave send failed', e); }
                 // immediate local cleanup and return to lobby
                 try { removeAllGameGraphics(); } catch (e) { console.error('cleanup failed', e); }
