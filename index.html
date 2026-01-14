@@ -362,21 +362,27 @@
         let prevRound = null;
         
         // screen switching helper (username, lobby, game)
-        function showScreen(id){
-            const screens = document.querySelectorAll('.screen');
-            screens.forEach(s => s.classList.remove('active'));
-            const target = document.getElementById(id);
-            if (target) {
-                target.classList.add('active');
-                // minor focus management
-                const input = target.querySelector('input');
-                if (input) input.focus();
-                // if switching to lobby, remove any game-specific UI so only lobby controls remain
-                if (id === 'lobbyScreen') {
-                    try { removeAllGameGraphics(); } catch (e) { console.error('cleanup on lobby switch failed', e); }
-                }
-            }
+        function showScreen(id) {
+    const screens = document.querySelectorAll('.screen');
+    screens.forEach(s => {
+        s.classList.remove('active');
+        s.style.display = 'none';
+    });
+
+    const target = document.getElementById(id);
+    if (target) {
+        target.style.display = 'flex';
+        target.classList.add('active');
+
+        const input = target.querySelector('input');
+        if (input) input.focus();
+
+        if (id === 'lobbyScreen') {
+            try { removeAllGameGraphics(); } 
+            catch (e) { console.error(e); }
         }
+    }
+}
     
         //wiring events
         btnJoin.addEventListener("click", e => {
