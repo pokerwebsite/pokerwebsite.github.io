@@ -409,7 +409,7 @@
                 "clientId": clientId
             }
 
-            ws(JSON.stringify(payLoad));
+            wsSend(JSON.stringify(payLoad));
 
         })
 
@@ -1383,13 +1383,7 @@
             if (e) e.textContent = '';
             if (errorTimeout) { clearTimeout(errorTimeout); errorTimeout = null; }
         }
-function wsSend(payload) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.warn("WS not ready, message dropped:", payload);
-        return;
-    }
-    wsSend(JSON.stringify(payload));
-}
+
         function renderMessages(messages){
             if (!messagesContainer) return;
             while(messagesContainer.firstChild) messagesContainer.removeChild(messagesContainer.firstChild);
@@ -2002,6 +1996,13 @@ function wsSend(payload) {
         function removeLeaveButton(){
             const existing = document.getElementById('leaveBtn');
             if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        }
+        function wsSend(payload) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.warn("WS not ready, message dropped:", payload);
+        return;
+        }
+        wsSend(JSON.stringify(payload));
         }
 
         function showBlindNotice(text, timeout = 4000){
