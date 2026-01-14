@@ -2001,7 +2001,9 @@
         console.warn("WS not ready, message dropped:", payload);
         return;
         }
+        console.log("preparing to send")
         ws.send(JSON.stringify(payload));
+        console.log(payload)
         }
 
         function showBlindNotice(text, timeout = 4000){
