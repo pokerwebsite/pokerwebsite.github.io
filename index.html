@@ -409,8 +409,7 @@
                 "clientId": clientId
             }
 
-            wsSend(JSON.stringify(payLoad));
-
+            wsSend(JSON.stringify(payLoad));x
         })
 
         ws.onmessage = message => {
@@ -2003,6 +2002,8 @@
         return;
         }
         wsSend(JSON.stringify(payload));
+        console.log("Payload size:", Buffer.byteLength(payload), "bytes");
+        console.log(payload)
         }
 
         function showBlindNotice(text, timeout = 4000){
