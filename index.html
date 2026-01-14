@@ -2001,7 +2001,7 @@
         console.warn("WS not ready, message dropped:", payload);
         return;
         }
-        wsSend(JSON.stringify(payload));
+        ws.send(JSON.stringify(payload));
         console.log("Payload size:", Buffer.byteLength(payload), "bytes");
         console.log(payload)
         }
